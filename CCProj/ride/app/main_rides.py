@@ -2,7 +2,6 @@ import os
 import json
 import ride_requests
 import database_rides
-
 from flask import Flask
 from flask import request, abort
 from flask_sqlalchemy import SQLAlchemy
@@ -89,7 +88,6 @@ def get_ride(ride_id):
 
     if response.status_code != 200:
         raise BadRequest("some error occurred")
-    
     return Response(response.text, status=200, mimetype='application/json')
 
 
@@ -105,7 +103,7 @@ def join_ride(ride_id):
 
     if response.status_code != 201:
         raise BadRequest("some error occurred")
-    
+
     return Response(None, status=200, mimetype='application/json')
 
 
@@ -143,16 +141,16 @@ def db_create_ride(json):
 
     timestamp = user_requests.CreateRideRequests.validateTimestamp(json["timestamp"])
 
-    ride = database.Ride(created_by=json["created_by"], source=json["source"], destination = json["destination"], timestamp = timestamp)
+    ride = database_rides.Ride(created_by=json["created_by"], source=json["source"], destination = json["destination"], timestamp = timestamp)
     ride.store()
 
-    database.RideUsers(ride_id=ride.ride_id, username=json["created_by"]).store()
+    database_rides.RideUsers(ride_id=ride.ride_id, username=json["created_by"]).store()
     return ride.ride_id
 
 def db_delete_ride(json):
     if "ride_id" not in json:
         raise BadRequest("ride_id not passed")
-    database.Ride.getByRideId(json["ride_id"]).delete()
+    database_rides.Ride.getByRideId(json["ride_id"]).delete()
 
 def db_join_ride(json):
     if "ride_id" not in json:
@@ -160,9 +158,9 @@ def db_join_ride(json):
     if "username" not in json:
         raise BadRequest("username not passed")
 
-    ride = database.Ride.getByRideId(json["ride_id"])
+    ride = database_rides.Ride.getByRideId(json["ride_id"])
     if ride is not None:
-        database.RideUsers(
+        database_rides.RideUsers(
             username=json["username"], ride_id=json["ride_id"]).store()
     else:
         raise BadRequest("ride_id %d not found" % json["ride_id"])
@@ -171,10 +169,10 @@ def db_get_ride(json):
     if "ride_id" not in json:
         raise BadRequest("ride_id not passed")
 
-    ride = database.Ride.getByRideId(json["ride_id"])
+    ride = database_rides.Ride.getByRideId(json["ride_id"])
     if ride is not None:
         users = list()
-        for ride_user in database.RideUsers.getByRideId(ride.ride_id):
+        for ride_user in database_rides.RideUsers.getByRideId(ride.ride_id):
             users.append(ride_user.username)
     response = {"ride_id": ride.ride_id, "username": users,
                 "timestamp": ride.timestamp.strftime("%d-%m-%Y:%S-%M-%H"), "source": ride.source, "destination": ride.destination}
@@ -186,24 +184,24 @@ def db_list_ride(json):
     if "destination" not in json:
         raise BadRequest("destination not passed")
     
-    rides = database.Ride.listUpcomingRides(json["source"], json["destination"])
+    rides = database_rides.Ride.listUpcomingRides(json["source"], json["destination"])
     response = list()
     if rides is not None and len(rides) > 0:
         for ride in rides:
             users = list()
-            for ride_user in database.RideUsers.getByRideId(ride.ride_id):
+            for ride_user in database_rides.RideUsers.getByRideId(ride.ride_id):
                 users.append(ride_user.username)
             response.append({"ride_id": ride.ride_id, "username": users,
                                 "timestamp": ride.timestamp.strftime("%d-%m-%Y:%S-%M-%H")})
     return response
 
 def db_delete_db(json):
-    users=database.User.getUsers()
+    users=database_users.User.getUsers()
     for user in users:
-        database.User.getByUsername(user.username).delete()
-    rides=database.Ride.getRides()
+        database_users.User.getByUsername(user.username).delete()
+    rides=database_rides.Ride.getRides()
     for ride in rides:
-        database.Ride.getByRideId(ride.ride_id).delete()
+        database_rides.Ride.getByRideId(ride.ride_id).delete()
     
 
 @app.route("/api/v1/db/write", methods={'POST'})
@@ -280,7 +278,7 @@ if __name__ == "__main__":
 
     # initialize database
     engine = create_engine(database_file, echo=True)
-    database.Base.metadata.create_all(engine, checkfirst=True)
+    database_rides.Base.metadata.create_all(engine, checkfirst=True)
     session_factory = sessionmaker(bind=engine)
 
     session = flask_scoped_session(session_factory, app)

@@ -3,7 +3,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from flask_sqlalchemy_session import current_session
 from sqlalchemy import create_engine
-from database_users import User
+#from database_users import User
 from datetime import datetime
 
 
@@ -13,8 +13,7 @@ Base = declarative_base()
 class Ride(Base):
     __tablename__ = 'ride'
     ride_id = Column(Integer, primary_key=True, autoincrement=True)
-    created_by = Column(String(80), ForeignKey(
-        "user.username"), nullable=False)
+   # created_by = Column(String(80), ForeignKey("user.username"), nullable=False)
     source = Column(Integer, nullable=False)
     destination = Column(Integer, nullable=False)
     timestamp = Column(DateTime, nullable=False)
@@ -60,8 +59,7 @@ class RideUsers(Base):
     __tablename__ = 'ride_users'
     id = Column(Integer, primary_key=True, autoincrement=True)
     ride_id = Column(Integer, ForeignKey("ride.ride_id"), nullable=False)
-    username = Column(String(80), ForeignKey(
-        "user.username"), nullable=False)
+   # username = Column(String(80), ForeignKey(        "user.username"), nullable=False)
 
     @staticmethod
     def getByRideId(ride_id):
