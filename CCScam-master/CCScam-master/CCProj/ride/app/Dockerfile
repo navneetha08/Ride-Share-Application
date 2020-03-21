@@ -1,8 +1,6 @@
 FROM python
-EXPOSE 8000
-WORKDIR /app
-COPY . /app 
-COPY main_rides.py /app 
-RUN pip install -r requirements.txt
-CMD python main_rides.py
-
+COPY . /ride
+EXPOSE 80
+WORKDIR /ride
+RUN pip install --no-cache-dir -r requirements.txt
+CMD ["python","main_rides.py"] 

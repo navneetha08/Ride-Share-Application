@@ -1,3 +1,6 @@
+from gevent import monkey
+monkey.patch_all()
+from gevent.pywsgi import WSGIServer
 import os
 import json
 import ride_requests
@@ -38,7 +41,7 @@ def add_ride():
     num_http_rides+=1
     body = {}
     body['username'] = request.json['created_by']
-    url="http://127.0.0.1:8080"
+    url="http://users"
     response = r.get("%s/api/v1/users" % (url),json=body)
     print(response.text)
   
@@ -123,7 +126,7 @@ def join_ride(ride_id):
 
     body = {}
     body['username'] = request.json['username']
-    url="http://127.0.0.1:8080"
+    url="http://users"
     response = r.get("%s/api/v1/users" % (url),json=body)
     print(response.text)
   
@@ -345,4 +348,6 @@ if __name__ == "__main__":
 
     session = flask_scoped_session(session_factory, app)
 
-    app.run(port=port,debug=True)
+#    app.run(port=port,debug=True)
+     http_ride=WSGIServer(('',80),app)
+     http_ride.serve_forever()
