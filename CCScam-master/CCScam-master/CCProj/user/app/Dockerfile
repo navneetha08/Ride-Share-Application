@@ -1,8 +1,6 @@
 FROM python
-EXPOSE 8080
-WORKDIR /app
-COPY . /app
-COPY main_user.py /app 
-RUN pip install -r requirements.txt
-CMD python3 /app/main_user.py
-
+COPY . /user
+EXPOSE 80
+WORKDIR /user
+RUN pip install --no-cache-dir -r requirements.txt
+CMD ["python","main_user.py"]

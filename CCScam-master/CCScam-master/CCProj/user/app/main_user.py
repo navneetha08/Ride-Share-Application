@@ -1,3 +1,6 @@
+from gevent import monkey
+monkey.patch_all()
+from gevent.pywsgi import WSGIServer
 import os
 import json
 import user_requests
@@ -221,4 +224,6 @@ if __name__ == "__main__":
 
     session = flask_scoped_session(session_factory, app)
 
-    app.run(port=port,debug=True)
+#    app.run(port=port,debug=True)
+     http_user=WSGIServer(('',80),app)
+     http_user.serve_forever()
