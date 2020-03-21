@@ -19,7 +19,7 @@ from werkzeug.exceptions import MethodNotAllowed
 import traceback
 import requests as r
 
-port = 8000
+port = 80
 app = Flask(__name__)
 
 
@@ -349,5 +349,5 @@ if __name__ == "__main__":
     session = flask_scoped_session(session_factory, app)
 
 #    app.run(port=port,debug=True)
-     http_ride=WSGIServer(('',80),app)
-     http_ride.serve_forever()
+http_ride=WSGIServer(('0.0.0.0',80),app)
+http_ride.serve_forever()
