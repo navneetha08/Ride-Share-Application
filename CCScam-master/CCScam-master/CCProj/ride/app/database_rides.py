@@ -12,7 +12,7 @@ Base = declarative_base()
 
 class Ride(Base):
     __tablename__ = 'ride'
-    ride_id = Column(Integer, primary_key=True, autoincrement=True)
+    rideId = Column(Integer, primary_key=True, autoincrement=True)
     created_by = Column(String(80), nullable=False)
     source = Column(Integer, nullable=False)
     destination = Column(Integer, nullable=False)
@@ -22,7 +22,7 @@ class Ride(Base):
     def store(self):
         current_session.add(self)
         current_session.commit()
-        return self.ride_id
+        return self.rideId
 
     def delete(self):
         current_session.delete(self)
@@ -31,8 +31,8 @@ class Ride(Base):
     def getRides():
         return current_session.query(Ride).all()
     @staticmethod
-    def getByRideId(ride_id):
-        return current_session.query(Ride).get(ride_id)
+    def getByRideId(rideId):
+        return current_session.query(Ride).get(rideId)
 
     @staticmethod
     def getByUsername(username):
@@ -58,17 +58,17 @@ class Ride(Base):
 class RideUsers(Base):
     __tablename__ = 'ride_users'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    ride_id = Column(Integer,nullable=False)
+    rideId = Column(Integer,nullable=False)
     username = Column(String(80), ForeignKey(Ride.created_by),nullable=False)
 
     @staticmethod
-    def getByRideId(ride_id):
-        return current_session.query(RideUsers).filter(RideUsers.ride_id == ride_id).all()
+    def getByRideId(rideId):
+        return current_session.query(RideUsers).filter(RideUsers.rideId == rideId).all()
 
     def store(self):
         current_session.add(self)
         current_session.commit()
-        return self.ride_id
+        return self.rideId
 
     def delete(self):
         current_session.delete(self)

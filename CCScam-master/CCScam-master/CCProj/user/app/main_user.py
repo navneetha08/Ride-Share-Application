@@ -156,8 +156,8 @@ def write_to_db():
             return Response(None, status=201, mimetype='application/json')
 
         elif action == "add_ride":
-            ride_id = db_create_ride(body)
-            return Response(json.dumps({"ride_id": ride_id}), status=201, mimetype='application/json')
+            rideId = db_create_ride(body)
+            return Response(json.dumps({"rideId": rideId}), status=201, mimetype='application/json')
         
         elif action == "delete_ride":
             db_delete_ride(body)
@@ -211,7 +211,7 @@ def db_delete_db(json):
         database_users.User.getByUsername(user.username).delete()
     rides=database_users.Ride.getRides()
     for ride in rides:
-        database_users.Ride.getByRideId(ride.ride_id).delete()
+        database_users.Ride.getByRideId(ride.rideId).delete()
 if __name__ == "__main__":
     project_dir = os.path.dirname(os.path.abspath(__file__))
     database_file = "sqlite:///{}".format(

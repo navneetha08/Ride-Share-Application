@@ -88,13 +88,13 @@ def list_upcoming_ride():
     return Response(response.text, status=200, mimetype='application/json')
 
 
-@app.route("/api/v1/rides/<int:ride_id>", methods={'GET'})
-def get_ride(ride_id):
+@app.route("/api/v1/rides/<int:rideId>", methods={'GET'})
+def get_ride(rideId):
     global num_http_rides
     num_http_rides+=1
     body = {
         "action": "get_ride",
-        "ride_id": ride_id
+        "rideId": rideId
     }
 
     response = r.post("%s/api/v1/db/read" % (localhost_url), json = body)
@@ -117,8 +117,8 @@ def num_ride():
         raise BadRequest("some error occurred")
 
     return Response(response.text, status=200, mimetype='application/json')
-@app.route("/api/v1/rides/<int:ride_id>", methods={'POST'})
-def join_ride(ride_id):
+@app.route("/api/v1/rides/<int:rideId>", methods={'POST'})
+def join_ride(rideId):
     global num_http_rides
     num_http_rides+=1
     if 'username' not in request.json:
@@ -136,7 +136,7 @@ def join_ride(ride_id):
     
     body = request.json
     body["action"] = "join_ride"
-    body["ride_id"] = ride_id
+    body["rideId"] = rideId
     response = r.post("%s/api/v1/db/write" % (localhost_url), json = body)
 
     if response.status_code != 201:
@@ -145,13 +145,13 @@ def join_ride(ride_id):
     return Response(None, status=200, mimetype='application/json')
 
 
-@app.route("/api/v1/rides/<int:ride_id>", methods={'DELETE'})
-def delete_ride(ride_id):
+@app.route("/api/v1/rides/<int:rideId>", methods={'DELETE'})
+def delete_ride(rideId):
     global num_http_rides
     num_http_rides+=1
     body = {}
     body["action"] = "delete_ride"
-    body["ride_id"] = ride_id
+    body["rideId"] = rideId
     response = r.post("%s/api/v1/db/write" % (localhost_url), json = body)
 
     if response.status_code != 201:
@@ -201,37 +201,37 @@ def db_create_ride(json):
     ride = database_rides.Ride(created_by=json["created_by"], source=json["source"], destination = json["destination"], timestamp = timestamp)
     ride.store()
 
-    database_rides.RideUsers(ride_id=ride.ride_id, username=json["created_by"]).store()
-    return ride.ride_id
+    database_rides.RideUsers(rideId=ride.rideId, username=json["created_by"]).store()
+    return ride.rideId
 
 def db_delete_ride(json):
-    if "ride_id" not in json:
-        raise BadRequest("ride_id not passed")
-    database_rides.Ride.getByRideId(json["ride_id"]).delete()
+    if "rideId" not in json:
+        raise BadRequest("rideId not passed")
+    database_rides.Ride.getByRideId(json["rideId"]).delete()
 
 def db_join_ride(json):
-    if "ride_id" not in json:
-        raise BadRequest("ride_id not passed")
+    if "rideId" not in json:
+        raise BadRequest("rideId not passed")
     if "username" not in json:
         raise BadRequest("username not passed")
 
-    ride = database_rides.Ride.getByRideId(json["ride_id"])
+    ride = database_rides.Ride.getByRideId(json["rideId"])
     if ride is not None:
         database_rides.RideUsers(
-            username=json["username"], ride_id=json["ride_id"]).store()
+            username=json["username"], rideId=json["rideId"]).store()
     else:
-        raise BadRequest("ride_id %d not found" % json["ride_id"])
+        raise BadRequest("rideId %d not found" % json["rideId"])
 
 def db_get_ride(json):
-    if "ride_id" not in json:
-        raise BadRequest("ride_id not passed")
+    if "rideId" not in json:
+        raise BadRequest("rideId not passed")
 
-    ride = database_rides.Ride.getByRideId(json["ride_id"])
+    ride = database_rides.Ride.getByRideId(json["rideId"])
     if ride is not None:
         users = list()
-        for ride_user in database_rides.RideUsers.getByRideId(ride.ride_id):
+        for ride_user in database_rides.RideUsers.getByRideId(ride.rideId):
             users.append(ride_user.username)
-    response = {"ride_id": ride.ride_id, "username": users,
+    response = {"rideId": ride.rideId, "username": users,
                 "timestamp": ride.timestamp.strftime("%d-%m-%Y:%S-%M-%H"), "source": ride.source, "destination": ride.destination}
     return response
 
@@ -246,9 +246,9 @@ def db_list_ride(json):
     if rides is not None and len(rides) > 0:
         for ride in rides:
             users = list()
-            for ride_user in database_rides.RideUsers.getByRideId(ride.ride_id):
+            for ride_user in database_rides.RideUsers.getByRideId(ride.rideId):
                 users.append(ride_user.username)
-            response.append({"ride_id": ride.ride_id, "username": users,
+            response.append({"rideId": ride.rideId, "username": users,
                                 "timestamp": ride.timestamp.strftime("%d-%m-%Y:%S-%M-%H")})
     return response
 
@@ -258,7 +258,7 @@ def db_delete_db(json):
         database_users.User.getByUsername(user.username).delete()
     rides=database_rides.Ride.getRides()
     for ride in rides:
-        database_rides.Ride.getByRideId(ride.ride_id).delete()
+        database_rides.Ride.getByRideId(ride.rideId).delete()
 def db_num_rides(json):
     users=database_rides.Ride.getRides()
     l=[]
@@ -284,8 +284,8 @@ def write_to_db():
 
         elif action == "add_ride":
             print("here")
-            ride_id = db_create_ride(body)
-            return Response(json.dumps({"ride_id": ride_id}), status=201, mimetype='application/json')
+            rideId = db_create_ride(body)
+            return Response(json.dumps({"rideId": rideId}), status=201, mimetype='application/json')
         
         elif action == "delete_ride":
             db_delete_ride(body)

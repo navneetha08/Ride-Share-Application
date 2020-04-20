@@ -29,7 +29,7 @@ class Requests:
 class CreateRideRequests(Requests):
 
     def getRideId(self):
-        return self._ride_id
+        return self._rideId
 
     def getCreatedBy(self):
         return self._created_by
