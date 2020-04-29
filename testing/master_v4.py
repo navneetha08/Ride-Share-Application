@@ -18,6 +18,17 @@ from kazoo.client import KazooClient,KazooState
 from threading import Timer
 
 logging.basicConfig()
+'''
+connection = pika.BlockingConnection(
+    pika.ConnectionParameters(host='localhost'))
+
+channel = connection.channel()
+'''
+p_connection = pika.BlockingConnection(pika.ConnectionParameters(host='rmq'))
+p_channel = p_connection.channel()
+
+c_connection = pika.BlockingConnection(pika.ConnectionParameters(host='rmq'))
+c_channel = c_connection.channel()
 
 class ZooKeeperConnect(object):
     master = False
@@ -43,14 +54,16 @@ class ZooKeeperConnect(object):
             return master_id
         except NoNodeError:
             return None
-
-    def set_leader(self,data):
+'''
+    def set_leader(self):
+        data = self.get_master_id()
         if (data==self.PID):
             self.zk.create('/worker/master',bytes(self.PID,'utf-8'),ephemeral=True)
             self.zk.delete(self.node_path)
-            write_result = channel.queue_declare(queue='write_queue',)
+            write_result = c_channel.queue_declare(queue='write_queue',)
             self.w_queue = write_result.method.queue
             master = True # it is master
+            c_channel.queue_delete(queue='read_queue')
             #code to close/block read_queue
 
     @object.zk.DataWatch('/workers/master')
@@ -60,11 +73,11 @@ class ZooKeeperConnect(object):
         elif (event.type=='DELETED' or event.type=='CHANGED' or event.state=='EXPIRED_SESSION'):
             if (atoi(self.PID)<atoi(data)):
                 self.zk.set('/election/master',bytes(self.PID,'utf-8'))
-                t = Timer(10.0,self.set_leader,[data])
+                t = Timer(10.0,self.set_leader)
                 t.start()
         else
             continue
-    
+'''
     def am_i_leader(self):
         master_id = self.get_master_id()
         if master_id is not None:
@@ -80,24 +93,43 @@ class ZooKeeperConnect(object):
         self.zk.delete(self.node_path)
  
         
-
-connection = pika.BlockingConnection(
-    pika.ConnectionParameters(host='localhost'))
-
-channel = connection.channel()
 zookeepersession = ZooKeeperConnect()
 
 
-read_result = channel.queue_declare(queue='read_queue',)
-sync_result = channel.queue_declare(queue='sync_queue',)
+read_result = c_channel.queue_declare(queue='read_queue',)
+sync_result = c_channel.queue_declare(queue='sync_queue',)
 r_queue = read_result.method.queue
 s_queue = sync_result.method.queue
+
+
+def on_request_read_write(ch, method, props, body):
+
+    if method.routing_key == 'read_queue':
+        response = read_from_db(body)
+    elif method.routing_key == 'write_queue':
+        response = write_to_db(body)
+        ch.basic_publish(exchange='',routing_key='sync_queue', body= body)
+    
+
+    print(response,method.routing_key)
+
+    ch.basic_publish(exchange='',
+                     routing_key=props.reply_to,
+                     properties=pika.BasicProperties(correlation_id = \
+                                                         props.correlation_id),
+                     body=str(response))
+    ch.basic_ack(delivery_tag=method.delivery_tag)
 
 def set_leader(data):
     if (data==zookeepersession.PID):
         zookeepersession.create_master_node()
-        write_result = channel.queue_declare(queue='write_queue',)
-        zookeepersession.w_queue = write_result.method.queue
+        c_channel.queue_delete(queue='sync_queue')
+        c_channel.queue_delete(queue='read_queue')
+        write_result = c_channel.queue_declare(queue='write_queue',)
+        sync_master = p_channel.queue_declare(queue='sync_queue',)
+        w_queue = write_result.method.queue
+        master_sync = = sync_master.method.queue
+        channel.basic_consume(queue=w_queue, on_message_callback=on_request_read_write)
         #master = True # it is master
         #code to close/block read_queue
 
@@ -298,7 +330,7 @@ def db_delete_user(json):
 
 
 
-
+'''
 def on_request_read_write(ch, method, props, body):
 
     if method.routing_key == 'read_queue':
@@ -317,20 +349,16 @@ def on_request_read_write(ch, method, props, body):
                      body=str(response))
     ch.basic_ack(delivery_tag=method.delivery_tag)
 
-
+'''
 def on_request_sync(ch, method, props, body):
     if method.routing_key == 'sync_queue':
         response = write_to_db(body)
         print(response)
 
-
 channel.basic_qos(prefetch_count=1)
-while(1): #not sure if it always needs to check before consuming or its default
-    if (zookeepersession.am_i_leader()):
-        channel.basic_consume(queue= zookeepersession.w_queue, on_message_callback=on_request_read_write)
-    else:
-        channel.basic_consume(queue= r_queue, on_message_callback=on_request_read_write)
-        channel.basic_consume(queue = s_queue,on_message_callback=on_request_sync)
+
+channel.basic_consume(queue= r_queue, on_message_callback=on_request_read_write)
+channel.basic_consume(queue = s_queue,on_message_callback=on_request_sync)
 
 
 
