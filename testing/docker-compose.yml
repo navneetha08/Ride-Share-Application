@@ -14,11 +14,11 @@ services:
   rmq:
     image: rabbitmq:3.8.3-alpine
 
-  producer:
+ worker_1:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "sleep 20 && python producer.py"
+    command: sh -c "sleep 20 && python master_v4.py"
     volumes:
     - .:/code
     links:
@@ -33,7 +33,7 @@ services:
     build:
         context: .
         dockerfile: Dockerfile
-    command: sh -c "sleep 15 && python consumer.py"
+    command: sh -c "sleep 15 && python master_v4.py"
     volumes:
     - .:/code
     links:
@@ -48,7 +48,7 @@ services:
     build:
         context: .
         dockerfile: Dockerfile
-    command: sh -c "python zk_orch.py"
+    command: sh -c "python sender_v2.py"
     volumes:
         - .:/code
     depends_on:
