@@ -123,13 +123,13 @@ def on_request_read_write(ch, method, props, body):
 def set_leader(data):
     if (data==zookeepersession.PID):
         zookeepersession.create_master_node()
-        c_channel.queue_delete(queue='sync_queue')
-        c_channel.queue_delete(queue='read_queue')
+        c_channel.basic_cancel(consumer_tag='slave_sync')
+        c_channel.basic_cancel(consumer_tag='slave_read')
         write_result = c_channel.queue_declare(queue='write_queue',)
         sync_master = p_channel.queue_declare(queue='sync_queue',)
         w_queue = write_result.method.queue
         master_sync = = sync_master.method.queue
-        channel.basic_consume(queue=w_queue, on_message_callback=on_request_read_write)
+        channel.basic_consume(queue=w_queue, on_message_callback=on_request_read_write,consumer_tag='master_write')
         #master = True # it is master
         #code to close/block read_queue
 
@@ -357,8 +357,8 @@ def on_request_sync(ch, method, props, body):
 
 channel.basic_qos(prefetch_count=1)
 
-channel.basic_consume(queue= r_queue, on_message_callback=on_request_read_write)
-channel.basic_consume(queue = s_queue,on_message_callback=on_request_sync)
+channel.basic_consume(queue= r_queue, on_message_callback=on_request_read_write,consumer_tag='slave_read')
+channel.basic_consume(queue = s_queue,on_message_callback=on_request_sync,consumer_tag='slave_sync')
 
 
 
