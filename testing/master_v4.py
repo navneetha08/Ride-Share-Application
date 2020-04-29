@@ -54,38 +54,15 @@ class ZooKeeperConnect(object):
             return master_id
         except NoNodeError:
             return None
-'''
-    def set_leader(self):
-        data = self.get_master_id()
-        if (data==self.PID):
-            self.zk.create('/worker/master',bytes(self.PID,'utf-8'),ephemeral=True)
-            self.zk.delete(self.node_path)
-            write_result = c_channel.queue_declare(queue='write_queue',)
-            self.w_queue = write_result.method.queue
-            master = True # it is master
-            c_channel.queue_delete(queue='read_queue')
-            #code to close/block read_queue
 
-    @object.zk.DataWatch('/workers/master')
-    def elect_leader(self,data,stat,event):
-        if (data==None):
-            self.zk.set('/election/master',bytes(self.PID,'utf-8')) 
-        elif (event.type=='DELETED' or event.type=='CHANGED' or event.state=='EXPIRED_SESSION'):
-            if (atoi(self.PID)<atoi(data)):
-                self.zk.set('/election/master',bytes(self.PID,'utf-8'))
-                t = Timer(10.0,self.set_leader)
-                t.start()
-        else
-            continue
-'''
     def am_i_leader(self):
         master_id = self.get_master_id()
         if master_id is not None:
             if (master_id == self.PID):
                 return True
-            else
+            else:
                 return False
-        else
+        else:
             return False
     
     def create_master_node(self):
@@ -303,22 +280,22 @@ def set_leader(data):
         write_result = c_channel.queue_declare(queue='write_queue',)
         sync_master = p_channel.queue_declare(queue='sync_queue',)
         w_queue = write_result.method.queue
-        master_sync = = sync_master.method.queue
+        master_sync = sync_master.method.queue
         channel.basic_consume(queue=w_queue, on_message_callback=on_request_read_write,consumer_tag='master_write')
         #master = True # it is master
         #code to close/block read_queue
 
 @zookeepersession.zk.DataWatch('/workers/master')
-    def elect_leader(data,stat,event):
-        if (data==None):
-            zookeepersession.zk.set('/election/master',bytes(zookeepersession.PID,'utf-8')) 
-        elif (event.type=='DELETED' or event.type=='CHANGED' or event.state=='EXPIRED_SESSION'):
-            if (atoi(zookeepersession.PID)<atoi(data)):
-                zookeepersession.zk.set('/election/master',bytes(zookeepersession.PID,'utf-8'))
-                t = Timer(10.0,set_leader,[data])
-                t.start()
-        else
-            continue  
+def elect_leader(data,stat,event):
+    if (data==None):
+        zookeepersession.zk.set('/election/master',bytes(zookeepersession.PID,'utf-8')) 
+    elif (event.type=='DELETED' or event.type=='CHANGED' or event.state=='EXPIRED_SESSION'):
+        if (atoi(zookeepersession.PID)<atoi(data)):
+            zookeepersession.zk.set('/election/master',bytes(zookeepersession.PID,'utf-8'))
+            t = Timer(10.0,set_leader,[data])
+            t.start()
+    else:
+         continue  
 
 def on_request_sync(ch, method, props, body):
     if method.routing_key == 'sync_queue':

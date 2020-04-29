@@ -6,7 +6,7 @@ services:
     restart: on-failure
     hostname: zoo
     ports:
-      - 2181:2181
+    - 2181
     environment:
       ZOO_MY_ID: 1
       ZOO_SERVERS: server.1=0.0.0.0:2888:3888;2181
@@ -14,7 +14,7 @@ services:
   rmq:
     image: rabbitmq:3.8.3-alpine
 
- worker_1:
+  worker_1:
     build:
       context: .
       dockerfile: Dockerfile
@@ -31,8 +31,8 @@ services:
 
   consumer:
     build:
-        context: .
-        dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile
     command: sh -c "sleep 15 && python master_v4.py"
     volumes:
     - .:/code
@@ -46,13 +46,13 @@ services:
 
   orchestrator:
     build:
-        context: .
-        dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile
     command: sh -c "python sender_v2.py"
     volumes:
-        - .:/code
+    - .:/code
     depends_on:
-        - zoo
+    - zoo
     restart: on-failure    
 
   

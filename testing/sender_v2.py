@@ -3,7 +3,7 @@ from flask import Flask
 from flask import request, abort, jsonify, render_template
 import uuid
 import json
-import Response
+from flask import Response
 import docker
 port = 7000
 app = Flask(__name__)
@@ -98,27 +98,26 @@ class ReadWriteRequests(object):
             self.connection.process_data_events()
         return str(self.response)
 
+zksession = ZookeeperOrch()
+
 #takes care of scaling
 @tl.job(interval=timedelta(seconds=120))
 def scaling():
+    global db_read_count
     no_of_slaves_reqd = ceil(db_read_count/20) 
     no_of_slaves_available = len(zksession.get_workers)-1
-    global db_read_count
     db_read_count = 0
     while (no_of_slaves_available>no_of_slaves_reqd):
         body='' #Not sure of this part
         r.post("%s/api/v1/crash/slave" % (localhost_url), json = body)
-    while (no_of_slaves_available<no_of_slaves_reqd):
-        #code to create slave containers
+        #add code to scale up
 
-#takes care of availability
 @zksession.zk.ChildrenWatch('/workers',send_event=True)
 def availability(children,event):
     if (event.type=='DELETED' or event.state=='EXPIRED_SESSION'):
         if zksession.zk.exists('/workers/master'):
             scaling()
 
-zksession = ZookeeperOrch()
 read_write = ReadWriteRequests()
 tl.start()
 
@@ -165,7 +164,7 @@ def slave_kill():
     slave_to_kill=ids[-1]
     '''
     slave_to_kill = zksession.get_highest_slave()
-    if (slave_to_kill != None)
+    if (slave_to_kill != None):
         for container in client.containers.list():
             if(container.id==slave_to_kill):
                 container.kill()
