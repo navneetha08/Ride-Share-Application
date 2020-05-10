@@ -26,7 +26,7 @@ channel = connection.channel()
 '''
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq',heartbeat=300))
 channel = connection.channel()
-
+pid = os.environ('PID')
 #c_connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq',heartbeat=300))
 #c_channel = c_connection.channel()
 
@@ -37,9 +37,9 @@ class ZooKeeperConnect(object):
         self.zk.start()
         self.zk.ensure_path('/workers')
         #code to get container PID => self.PID=PID
-        self.PID='1000'
+        self.PID=pid
         self.w_queue=''
-        self.node_path = self.zk.create('/workers/node',ephemeral=True,sequence=True) #value='self.PID'
+        self.node_path = self.zk.create('/workers/node',ephemeral=True,sequence=True,value=self.PID.encode('utf-8')) #value='self.PID'
         '''
         try:
             master_id, master_stat = self.zk.get('/workers/master',watch=am_i_leader)

@@ -1,3 +1,4 @@
+
 import pika
 from flask import Flask
 from flask import request, abort, jsonify, render_template
@@ -44,13 +45,15 @@ class ZookeeperOrch(object):
         for i in worker_nodes:
             data,stat=self.zk.get('/workers/'+i)
             data = data.decode('utf-8')
-            worker_pid.append(int(data))
-        workers = sorted(worker_pid)
-        return workers
+            print(data)
+        return data
+#            worker_pid.append(int(data))
+#        workers = sorted(worker_pid)
+#        return workers
     
     def get_highest_slave(self):
         workers = self.get_workers()
-        slave = max(workers)
+        #slave = max(workers)
         slave = workers
         pid = self.get_master_PID()
         if (pid is not None):    
@@ -114,19 +117,12 @@ def scaling():
     global db_read_count
     print("in scaling function")
     no_of_slaves_reqd = ceil(db_read_count/20) 
-    no_of_slaves_available = len(zksession.get_workers())-1
+    no_of_slaves_available = len(zksession.get_workers)-1
     db_read_count = 0
     while (no_of_slaves_available>no_of_slaves_reqd):
         body='' #Not sure of this part
         r.post("%s/api/v1/crash/slave" % (localhost_url), json = body)
         #add code to scale up
-    while (no_of_slaves_available<no_of_slaves_reqd):
-        client = docker.from_env()
-        worker_cont=client.containers.run(image="slaves:latest",links={"zookeeper":"zoo","rabbitmq":"rabbitmq"},\
-network="ccproj",restart_policy={"Name":"on-failure"},detach=True,privileged=True)
-        pid = str(worker_cont.top()['Processes'][0][1])
-        worker_cont.exec_run('sh -c "python master_v4.py"',environment={"PID":pid})
-        no_of_slaves_avaliable = no_of_slaves_available + 1
 
 @zksession.zk.ChildrenWatch('/workers',send_event=True)
 def availability(children,event):
@@ -136,12 +132,6 @@ def availability(children,event):
             		scaling()
 
 read_write = ReadWriteRequests()
-for i in range(2):
-        client = docker.from_env()
-        worker_cont=client.containers.run(image='slaves:latest',links={'zookeeper':'zoo','rabbitmq':'rabbitmq'},\
-network="ccproj",restart_policy={"Name":"on-failure"},detach=True,privileged=True)
-        pid = str(worker_cont.top()['Processes'][0][1])
-        worker_cont.exec_run('sh -c "python master_v4.py"',environment={"PID":pid})
 tl.start()
 
 @app.route("/api/v1/db/write", methods={'POST'})
@@ -164,6 +154,8 @@ def read():
     print(response)    
     return Response(jsonify(response["res"]), status=200, mimetype='application/json')
 
+
+
 @app.route("/api/v1/crash/master", methods={'POST'})
 def master_kill():
     l=[]
@@ -183,13 +175,16 @@ def slave_kill():
         ids.append(container.id)
     ids=sorted(ids)
     slave_to_kill=ids[-1]
-   '''
+   
     slave_to_kill = zksession.get_highest_slave()
     if (slave_to_kill != None):
         for container in client.containers.list():
             if(container.id==slave_to_kill):
                 container.kill()
-        return Response(json.dumps(list(str(slave_to_kill))), status=200, mimetype='application/json')
+     return Response(json.dumps(list(str(slave_to_kill))), status=200, mimetype='application/json')
+    '''
+    slave_to_kill = zksession.get_highest_slave()
+    return Response(json.dumps(slave_to_kill), status=200, mimetype='application/json')
     
 
 @app.route("/api/v1/worker/list", methods={'GET'})

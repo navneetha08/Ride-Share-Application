@@ -22,50 +22,17 @@ services:
       - default
     container_name: rabbitmq
    
-
-  worker_1:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: sh -c "sleep 20 && python master_v4.py"
-    volumes:
-    - .:/code
-    links:
-    - rmq
-    - zoo
-    depends_on:
-    - rmq
-    - zoo
-    restart: on-failure
-    networks:
-      - default
-
-  consumer:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: sh -c "sleep 20 && python master_v4.py"
-    volumes:
-    - .:/code
-    links:
-    - rmq
-    - zoo
-    depends_on:
-    - rmq
-    - zoo
-    restart: on-failure
-    networks:
-      - default
-
   orchestrator:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "sleep 20 && python sender_v2.py"
+    command: sh -c "sleep 15 && python sender_v2.py"
     ports:       
     - "80:80"
     volumes:
     - .:/code
+    - /var/run/docker.sock:/var/run/docker.sock
+    - /usr/bin/docker:/usr/bin/docker 
     depends_on:
     - zoo
     - rmq
