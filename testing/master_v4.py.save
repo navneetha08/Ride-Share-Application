@@ -24,11 +24,11 @@ connection = pika.BlockingConnection(
 
 channel = connection.channel()
 '''
-connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq',heartbeat=300))
-channel = connection.channel()
+p_connection = pika.BlockingConnection(pika.ConnectionParameters(host='rmq'))
+p_channel = p_connection.channel()
 
-#c_connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq',heartbeat=300))
-#c_channel = c_connection.channel()
+c_connection = pika.BlockingConnection(pika.ConnectionParameters(host='rmq'))
+c_channel = c_connection.channel()
 
 class ZooKeeperConnect(object):
     master = False
@@ -52,7 +52,7 @@ class ZooKeeperConnect(object):
         try:
             master_id, master_stat = self.zk.get('/election/leader')
             return master_id
-        except:
+        except NoNodeError:
             return None
 
     def am_i_leader(self):
@@ -73,8 +73,8 @@ class ZooKeeperConnect(object):
 zookeepersession = ZooKeeperConnect()
 
 
-read_result = channel.queue_declare(queue='read_queue',)
-sync_result = channel.queue_declare(queue='sync_queue',)
+read_result = c_channel.queue_declare(queue='read_queue',)
+sync_result = c_channel.queue_declare(queue='sync_queue',)
 r_queue = read_result.method.queue
 s_queue = sync_result.method.queue
 
@@ -275,10 +275,10 @@ def on_request_read_write(ch, method, props, body):
 def set_leader(data):
     if (data==zookeepersession.PID):
         zookeepersession.create_master_node()
-        channel.basic_cancel(consumer_tag='slave_sync')
-        channel.basic_cancel(consumer_tag='slave_read')
-        write_result = channel.queue_declare(queue='write_queue',)
-        sync_master = channel.queue_declare(queue='sync_queue',)
+        c_channel.basic_cancel(consumer_tag='slave_sync')
+        c_channel.basic_cancel(consumer_tag='slave_read')
+        write_result = c_channel.queue_declare(queue='write_queue',)
+        sync_master = p_channel.queue_declare(queue='sync_queue',)
         w_queue = write_result.method.queue
         master_sync = sync_master.method.queue
         channel.basic_consume(queue=w_queue, on_message_callback=on_request_read_write,consumer_tag='master_write')
@@ -288,17 +288,13 @@ def set_leader(data):
 @zookeepersession.zk.DataWatch('/workers/master')
 def elect_leader(data,stat,event):
     if (data==None):
-        try:
-            zookeepersession.zk.set('/election/master',bytes(zookeepersession.PID,'utf-8')) 
-        except:
-            pass
+        zookeepersession.zk.set('/election/master',bytes(zookeepersession.PID,'utf-8')) 
     elif (event.type=='DELETED' or event.type=='CHANGED' or event.state=='EXPIRED_SESSION'):
-        if (atoi(zookeepersession.PID)<atoi(data)):
-            zookeepersession.zk.set('/election/master',bytes(zookeepersession.PID,'utf-8'))
-            t = Timer(10.0,set_leader,[data])
-            t.start()
-#    else:
-#     continue
+        if (atoi(zookeepersession.PID)<atoi(data))                zookeepersession.zk.set('/election/master',bytes(zookeepersession.PID,'utf-8'))
+                t = Timer(10.0,set_leader,[data])
+                t.start()
+        else:
+            continue  
 
 def on_request_sync(ch, method, props, body):
     if method.routing_key == 'sync_queue':

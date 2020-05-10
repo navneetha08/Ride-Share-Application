@@ -1,5 +1,8 @@
 version: '3.1'
-
+networks:
+  default:
+    external:
+      name: ccproj
 services:
   zoo:
     image: zookeeper
@@ -10,9 +13,15 @@ services:
     environment:
       ZOO_MY_ID: 1
       ZOO_SERVERS: server.1=0.0.0.0:2888:3888;2181
+    networks:
+      - default
 
   rmq:
     image: rabbitmq:3.8.3-alpine
+    networks:
+      - default
+    container_name: rabbitmq
+   
 
   worker_1:
     build:
@@ -28,12 +37,14 @@ services:
     - rmq
     - zoo
     restart: on-failure
+    networks:
+      - default
 
   consumer:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "sleep 15 && python master_v4.py"
+    command: sh -c "sleep 20 && python master_v4.py"
     volumes:
     - .:/code
     links:
@@ -43,16 +54,23 @@ services:
     - rmq
     - zoo
     restart: on-failure
+    networks:
+      - default
 
   orchestrator:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "python sender_v2.py"
+    command: sh -c "sleep 20 && python sender_v2.py"
+    ports:       
+    - "80:80"
     volumes:
     - .:/code
     depends_on:
     - zoo
+    - rmq
     restart: on-failure    
+    networks:
+      - default
 
   
