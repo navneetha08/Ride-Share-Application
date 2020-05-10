@@ -122,10 +122,10 @@ def scaling():
         #add code to scale up
     while (no_of_slaves_available<no_of_slaves_reqd):
         client = docker.from_env()
-        worker_cont=client.containers.run(image="slaves:latest",links={"zookeeper":"zoo","rabbitmq":"rabbitmq"},\
+        worker_cont=client.containers.run(image="slaves:latest",entrypoint="sh -c 'while true;do : ;done'",links={"zookeeper":"zoo","rabbitmq":"rabbitmq"},\
 network="ccproj",restart_policy={"Name":"on-failure"},detach=True,privileged=True)
-        pid = str(worker_cont.top()['Processes'][0][1])
-        worker_cont.exec_run('sh -c "python master_v4.py"',environment={"PID":pid})
+        pid = worker_cont.top()
+        worker_cont.exec_run('sh -c "sleep 20 && python master_v4.py"',environment={"PID":pid})
         no_of_slaves_avaliable = no_of_slaves_available + 1
 
 @zksession.zk.ChildrenWatch('/workers',send_event=True)
@@ -138,9 +138,9 @@ def availability(children,event):
 read_write = ReadWriteRequests()
 for i in range(2):
         client = docker.from_env()
-        worker_cont=client.containers.run(image='slaves:latest',links={'zookeeper':'zoo','rabbitmq':'rabbitmq'},\
+        worker_cont=client.containers.run(image='slaves:latest',entrypoint="sh -c 'while true; do : ;done'",links={'zookeeper':'zoo','rabbitmq':'rabbitmq'},\
 network="ccproj",restart_policy={"Name":"on-failure"},detach=True,privileged=True)
-        pid = str(worker_cont.top()['Processes'][0][1])
+        pid = worker_cont.top()
         worker_cont.exec_run('sh -c "python master_v4.py"',environment={"PID":pid})
 tl.start()
 
