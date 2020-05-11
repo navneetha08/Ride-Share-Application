@@ -28,7 +28,7 @@ channel = connection.channel()
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='rmq',heartbeat=0))
 channel = connection.channel()
 dockerClient = docker.APIClient()
-pid = dockerClient.inspect_container('testing_worker_1_1')['State']['Pid']
+pid = dockerClient.inspect_container('testing_worker_2_1')['State']['Pid']
 #pid = os.environ('PID')
 #c_connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq',heartbeat=300))
 #c_channel = c_connection.channel()

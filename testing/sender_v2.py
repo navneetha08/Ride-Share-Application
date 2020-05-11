@@ -13,7 +13,7 @@ from timeloop import Timeloop
 from datetime import timedelta
 import time
 from math import ceil
-
+import requests as r
 logging.basicConfig()
 
 global db_read_count
@@ -64,7 +64,7 @@ class ReadWriteRequests(object):
 
     def __init__(self):
         self.connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host='rabbitmq',heartbeat=300))
+            pika.ConnectionParameters(host='rmq',heartbeat=0))
 
         self.channel = self.connection.channel()
 
@@ -123,11 +123,11 @@ def scaling():
     while (no_of_slaves_available<no_of_slaves_reqd):
         client = docker.from_env()
         worker_cont=client.containers.run(image="slaves:latest",entrypoint="sh -c 'while true;do : ;done'",links={"zookeeper":"zoo","rabbitmq":"rabbitmq"},\
-network="ccproj",restart_policy={"Name":"on-failure"},detach=True,privileged=True)
+network="cloud",restart_policy={"Name":"on-failure"},detach=True,privileged=True)
         pid = worker_cont.top()
         worker_cont.exec_run('sh -c "sleep 20 && python master_v4.py"',environment={"PID":pid})
         no_of_slaves_avaliable = no_of_slaves_available + 1
-
+# docker run -it --rm --network cloud -e 10 --entrypoint python master_v4.py slaves 
 @zksession.zk.ChildrenWatch('/workers',send_event=True)
 def availability(children,event):
     if(event!=None):
@@ -136,12 +136,14 @@ def availability(children,event):
             		scaling()
 
 read_write = ReadWriteRequests()
+'''
 for i in range(2):
         client = docker.from_env()
         worker_cont=client.containers.run(image='slaves:latest',entrypoint="sh -c 'while true; do : ;done'",links={'zookeeper':'zoo','rabbitmq':'rabbitmq'},\
-network="ccproj",restart_policy={"Name":"on-failure"},detach=True,privileged=True)
+network="cloud",restart_policy={"Name":"on-failure"},detach=True,privileged=True)
         pid = worker_cont.top()
         worker_cont.exec_run('sh -c "python master_v4.py"',environment={"PID":pid})
+'''
 tl.start()
 
 @app.route("/api/v1/db/write", methods={'POST'})
@@ -183,7 +185,7 @@ def slave_kill():
         ids.append(container.id)
     ids=sorted(ids)
     slave_to_kill=ids[-1]
-   '''
+    '''
     slave_to_kill = zksession.get_highest_slave()
     if (slave_to_kill != None):
         for container in client.containers.list():
@@ -200,12 +202,22 @@ def list_cont():
     for container in client.containers.list():
         list_workers.append(container.id)
     '''
-    list_workers = zksession.get_workers
+    list_workers = zksession.get_workers()
     return Response(json.dumps(list_workers), status=200, mimetype='application/json')
 
 
 
+
+@app.route("/api/v1/db/clear", methods={'POST'})
+def delete_db():
+    body = {}
+    body["action"] = "delete_db"
+    response = r.post(url = "http://34.203.18.244/api/v1/db/write", json = body)
+    return {},200
+	#if response.status_code != 201:
+        #raise BadRequest("some error occurred")
+
 if __name__ == "__main__":
-    app.run(port = port,debug=True,host="0.0.0.0")
+    app.run(port = port,debug=True,host="0.0.0.0",use_reloader=True)
 
 tl.stop()
