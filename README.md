@@ -12,13 +12,17 @@ sudo python main.py
 ## Phase 2:
 The monolithic service has been split into rides and users where each microservice has been containerized with its own database. Database accesses are also made across containers through a docker bridge network.
 #### To execute this application:
-
+Go to CCScam->assignment2
 ```
 sudo docker-compose build
 sudo docker-compose up -d
 ```
 ## Phase 3:
 The microservices have been shifted to separate instances and now the API calls are sent to these services via a Load Balancer. The database calls are made through a docker overlay network.
+#### To execute this application:
+
+```
+```
 ## Final Phase:
 We have implemeneted three microservices: rides, users and database.
 API calls are sent to the users and rides services via a Load Balancer. The rides and users now make calls to the database microservice.
