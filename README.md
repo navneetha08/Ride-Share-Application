@@ -7,7 +7,7 @@ This project has been implemented in phases
 A monolithic service consisting of users, rides and database APIs using flask. Our database is sqlite3 based.
 To execute this application:
 Go to CCScam->assignment1
-`sudo python main.py`
+```sudo python main.py```
 ## Phase 2:
 The monolithic service has been split into rides and users where each microservice has been containerized with its own database. Database accesses are also made across containers through a docker bridge network.
 ## Phase 3:
