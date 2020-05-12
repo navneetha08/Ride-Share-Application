@@ -44,12 +44,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "sleep 25 && python master_v4.py"
+    command: sh -c "sleep 25 && python master_v4.py testing_worker_1_1 & python db_op.py"
     depends_on:
     - zoo
     - rmq
     volumes:
     - .:/code
+    - /var/run/docker.sock:/var/run/docker.sock
+    - /usr/bin/docker:/usr/bin/docker
     links:
     - zoo
     - rmq
@@ -61,12 +63,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "sleep 25 && python master_v4.py"
+    command: sh -c "sleep 25 && python master_v4.py testing_worker_2_1 & python db_op.py"
     depends_on:
     - zoo
     - rmq
     volumes:
     - .:/code
+    - /var/run/docker.sock:/var/run/docker.sock
+    - /usr/bin/docker:/usr/bin/docker
     links:
     - zoo
     - rmq

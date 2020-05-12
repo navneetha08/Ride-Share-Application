@@ -12,13 +12,18 @@ from werkzeug.exceptions import BadRequest
 from werkzeug.exceptions import NotFound
 from werkzeug.exceptions import InternalServerError
 from werkzeug.exceptions import MethodNotAllowed
-import database
 import logging
 from kazoo.client import KazooClient,KazooState
 from threading import Timer
 import docker
+import sys
+import database
+from flask import Flask
+import requests as r
 
 logging.basicConfig()
+port=8080
+localhost_url='http://127.0.0.1:8080'
 '''
 connection = pika.BlockingConnection(
     pika.ConnectionParameters(host='localhost'))
@@ -27,8 +32,10 @@ channel = connection.channel()
 '''
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='rmq',heartbeat=0))
 channel = connection.channel()
+c_name = sys.argv[1]
 dockerClient = docker.APIClient()
-pid = dockerClient.inspect_container('testing_worker_1_1')['State']['Pid']
+global pid
+pid = int(dockerClient.inspect_container(str(c_name))['State']['Pid'])
 #pid = os.environ('PID')
 #c_connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq',heartbeat=300))
 #c_channel = c_connection.channel()
@@ -40,9 +47,9 @@ class ZooKeeperConnect(object):
         self.zk.start()
         self.zk.ensure_path('/workers')
         #code to get container PID => self.PID=PID
-        self.PID=pid
+        #self.PID=pid
         self.w_queue=''
-        self.node_path = self.zk.create('/workers/node',ephemeral=True,sequence=True,value=self.PID.encode('utf-8')) #value='self.PID'
+        self.node_path = self.zk.create('/workers/node',ephemeral=True,sequence=True,value=bytes(str(pid),'utf-8')) #value='self.PID'
         '''
         try:
             master_id, master_stat = self.zk.get('/workers/master',watch=am_i_leader)
@@ -55,13 +62,14 @@ class ZooKeeperConnect(object):
         try:
             master_id, master_stat = self.zk.get('/election/leader')
             return master_id
-        except:
+        except Exception as ex:
+            print(ex)
             return None
 
     def am_i_leader(self):
         master_id = self.get_master_id()
         if master_id is not None:
-            if (master_id == self.PID):
+            if (master_id.decode('utf-8') == pid):
                 return True
             else:
                 return False
@@ -69,7 +77,7 @@ class ZooKeeperConnect(object):
             return False
     
     def create_master_node(self):
-        self.zk.create('/workers/master',bytes(self.PID,'utf-8'),ephemeral=True)
+        self.zk.create('/workers/master',bytes(str(pid),'utf-8'),ephemeral=True)
         self.zk.delete(self.node_path)
  
         
@@ -82,7 +90,7 @@ write_result = channel.queue_declare(queue='write_queue',)
 r_queue = read_result.method.queue
 s_queue = sync_result.method.queue
 w_queue = write_result.method.queue
-
+'''
 def db_delete_db(json):
     users=database.User.getUsers()
     for user in users:
@@ -107,14 +115,19 @@ def db_create_ride(json):
         raise BadRequest("destination not passed")
     if "timestamp" not in json:
         raise BadRequest("timestamp not passed")
-
-    timestamp = user_requests.CreateRideRequests.validateTimestamp(json["timestamp"])
-
-    ride = database.Ride(created_by=json["created_by"], source=json["source"], destination = json["destination"], timestamp = timestamp)
+    print('maybe creating ride')
+    #timestamp = user_requests.CreateRideRequests.validateTimestamp(json["timestamp"])
+    cmd="insert into ride ('created_by','source','destination','timestamp') values("+"'"+json['created_by']+"',"+str(json['source'])+","+str(json['destination'])+","+str(json['timestamp'])+")"
+   
+    with engine.connect() as connection:
+        with connection.begin():
+            result=connection.execute(ride.insert(),{"created_by":json['created_by'],"source":json['source'],"destination":json['destination'],"timestamp":json['timestamp']})
+    ride = database.Ride(created_by=json["created_by"], source=json["source"], destination = json["destination"], timestamp = json["timestamp"])
     ride.store()
 
-    database.RideUsers(ride_id=ride.ride_id, username=json["created_by"]).store()
-    return ride.ride_id
+    database.RideUsers(rideId=ride.rideId, username=json["created_by"]).store()
+    print("inserting ride",result.rideId)
+    return result.rideId
 
 def db_delete_ride(json):
     if "ride_id" not in json:
@@ -189,6 +202,7 @@ def db_delete_user(json):
     if "username" not in json:
         raise BadRequest("username not passed")
     database.User.getByUsername(json["username"]).delete()
+'''
 
 def read_from_db(body):
     body = json.loads(body)
@@ -198,59 +212,79 @@ def read_from_db(body):
     action = body["action"]
     
     if action == "list_upcoming_ride":
-        x={"res":Response(json.dumps(db_list_ride(body)), status=200, mimetype='application/json')}
+        #reponse=db_list_ride(body)
+        response =  r.post('%s/api/v1/db_list_ride'%localhost_url,json=body)
+        x={"res":Response(json.dumps(response), status=200, mimetype='application/json')}
         return(json.dumps(x)) 
 
     elif action == "get_ride":
-        x={"res":Response(json.dumps(db_get_ride(body)), status=200, mimetype='application/json')}
+        #response=db_get_ride(body)
+        response =  r.post('%s/api/v1/db_get_ride'%localhost_url,json=body)
+        x={"res":Response(json.dumps(response), status=200, mimetype='application/json')}
         return(json.dumps(x)) 
     elif action == "get_user":
-        x={"res": Response(json.dumps(db_get_user(body)), status=200, mimetype='application/json')}
+        #response=db_get_user(body)
+        response =  r.post('%s/api/v1/db_get_user'%localhost_url,json=body)
+        x={"res": Response(json.dumps(response), status=200, mimetype='application/json')}
         return(json.dumps(x)) 
     elif action =="list_users":
-        x={"res": Response(json.dumps(db_list_users(body)),status=200, mimetype='application/json')}
-        return(json.dumps(x)) 
+        #response = db_list_users
+        response =  r.post('%s/api/v1/db_list_users'%localhost_url,json=body)
+        #x={"res": Response(json.dumps(response),status=200, mimetype='application/json')}
+        return(response.text) 
     elif action =='num_ride':
-        x={"res": Response(json.dumps(db_num_rides(body)),status=200, mimetype='application/json')}
+        response - db_num_rides(body)
+        response =  r.post('%s/api/v1/db_num_rides'%localhost_url,json=body)
+        x=response.text
+        x={"res": Response(json.dumps(response),status=200, mimetype='application/json')}
         return(json.dumps(x)) 
     else:
         raise BadRequest("unrecognized action %s" % (action))
 
 def write_to_db(body):
     body = json.loads(body)
+    print("in write_to_db",body)
     if "action" not in body:
         raise BadRequest("action not passed")
 
     action = body["action"]
     try:
         if action == "add_user":
-            db_add_user(body)
-            x={"res":Response(None, status=201, mimetype='application/json')}
-            return(json.dumps(x)) 
+            #db_add_user(body)
+            r.post('%s/api/v1/db_add_user'%localhost_url,json=body)
+            return str(200)
+           # x={"res":Response(None, status=201, mimetype='application/json')}
+            #return json.dumps(x) 
 
         elif action == "delete_user":
-            db_delete_user(body)
-            x={"res":Response(None, status=201, mimetype='application/json')}
-            return(json.dumps(x)) 
+            #db_delete_user(body)
+            r.post('%s/api/v1/db_delete_user'%localhost_url,json = body)
+            #x={"res":Response(None, status=201, mimetype='application/json')}
+            #return(json.dumps(x)) 
 
         elif action == "add_ride":
-            ride_id = db_create_ride(body)
-            x={"res":Response(json.dumps({"ride_id": ride_id}), status=201, mimetype='application/json')}
+            #ride_id = db_create_ride(body)
+            r.post('%s/api/v1/db_add_ride'%localhost_url,json = body)
+            x={"res":Response(json.dumps({"rideId": ride_id}), status=201, mimetype='application/json')}
             return(json.dumps(x)) 
         
         elif action == "delete_ride":
-            db_delete_ride(body)
-            x={"res":Response(None, status=201, mimetype='application/json')}
-            return(json.dumps(x)) 
+           # db_delete_ride(body)
+            r.post('%s/api/v1/db_delete_ride'%localhost_url,json = body)
+            #x={"res":Response(None, status=201, mimetype='application/json')}
+            #return(json.dumps(x)) 
         
         elif action == "join_ride":
-            db_join_ride(body)
+            #db_join_ride(body)
             x={"res":Response(None, status=201, mimetype='application/json')}
             return(json.dumps(x)) 
         elif action == "delete_db":
-            db_delete_db(body)
-            x={"res":Response(None, status=201, mimetype='application/json')}
-            return(json.dumps(x)) 
+            print(body)
+            #db_delete_db(body)
+            r.post('%s/api/v1/db_delete_db'%localhost_url,json = body)
+            return str(200)
+            #x={"res":{},"status":200}
+            #return(json.dumps(x)) 
         else:
             raise BadRequest("unrecognized action %s" % (action))
     except BadRequest as ex:
@@ -279,7 +313,7 @@ def on_request_read_write(ch, method, props, body):
     ch.basic_ack(delivery_tag=method.delivery_tag)
 
 def set_leader(data):
-    if (data==zookeepersession.PID):
+    if (data.decode('utf-8')==pid):
         zookeepersession.create_master_node()
         channel.basic_cancel(consumer_tag='slave_sync')
         channel.basic_cancel(consumer_tag='slave_read')
@@ -295,12 +329,14 @@ def set_leader(data):
 def elect_leader(data,stat,event):
     if (data==None):
         try:
-            zookeepersession.zk.set('/election/master',bytes(zookeepersession.PID,'utf-8')) 
-        except:
+           # zookeepersession.zk.set('/election/master',bytes(zookeepersession.PID,'utf-8')) 
+            zookeepersession.zk.set('/election/master',bytes(pid,'utf-8'))
+        except Exception as ex:
+            print(ex)
             pass
     elif (event.type=='DELETED' or event.type=='CHANGED' or event.state=='EXPIRED_SESSION'):
-        if (atoi(zookeepersession.PID)<atoi(data)):
-            zookeepersession.zk.set('/election/master',bytes(zookeepersession.PID,'utf-8'))
+        if (pid<data.decode('utf-8')):
+            zookeepersession.zk.set('/election/master',bytes(str(pid),'utf-8'))
             t = Timer(10.0,set_leader,[data])
             t.start()
 #    else:
@@ -317,8 +353,7 @@ channel.basic_consume(queue= r_queue, on_message_callback=on_request_read_write,
 channel.basic_consume(queue = s_queue,on_message_callback=on_request_sync,consumer_tag='slave_sync')
 channel.basic_consume(queue=w_queue, on_message_callback=on_request_read_write,consumer_tag='master_write')
 
-
-
+'''
 project_dir = os.path.dirname(os.path.abspath(__file__))
 database_file = "sqlite:///{}".format(
 os.path.join(project_dir, "rideshare.db"))
@@ -327,5 +362,7 @@ os.path.join(project_dir, "rideshare.db"))
 engine = create_engine(database_file, echo=True)
 database.Base.metadata.create_all(engine, checkfirst=True)
 session_factory = sessionmaker(bind=engine)
+session = flask_scoped_session(session_factory,app)'''
 print(" [x] Awaiting Read Write requests")
+#app.run(port=port,debug=True)
 channel.start_consuming()

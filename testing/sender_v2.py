@@ -20,6 +20,12 @@ global db_read_count
 db_read_count = 0
 
 tl = Timeloop()
+global conts
+conts = 3
+
+client = docker.from_env()
+
+localhost_url = "http://34.203.18.244"
 
 class ZookeeperOrch(object):
     def __init__(self):
@@ -83,6 +89,7 @@ class ReadWriteRequests(object):
     def call(self, bod,state):
         self.response = None
         self.corr_id = str(uuid.uuid4())
+       
         if state=='read':
             self.channel.basic_publish(
             exchange='',
@@ -104,6 +111,7 @@ class ReadWriteRequests(object):
             body=bod)            
         while self.response is None:
             self.connection.process_data_events()
+        print(self.response)
         return str(self.response)
 
 zksession = ZookeeperOrch()
@@ -114,18 +122,22 @@ def scaling():
     global db_read_count
     print("in scaling function")
     no_of_slaves_reqd = ceil(db_read_count/20) 
-    no_of_slaves_available = len(zksession.get_workers())-1
+    no_of_slaves_available = len(client.containers.list())-4
+    print(no_of_slaves_reqd,no_of_slaves_available)
     db_read_count = 0
-    while (no_of_slaves_available>no_of_slaves_reqd):
+    while ((no_of_slaves_available>no_of_slaves_reqd) and (len(client.containers.list())-5>0)):
         body='' #Not sure of this part
         r.post("%s/api/v1/crash/slave" % (localhost_url), json = body)
+        no_of_slaves_available = no_of_slaves_available - 1
         #add code to scale up
     while (no_of_slaves_available<no_of_slaves_reqd):
-        client = docker.from_env()
-        worker_cont=client.containers.run(image="slaves:latest",entrypoint="sh -c 'while true;do : ;done'",links={"zookeeper":"zoo","rabbitmq":"rabbitmq"},\
+        #client = docker.from_env()
+        c_name = "testing_worker_"+str(conts)+"_1"
+        conts = conts + 1
+        worker_cont=client.containers.run(image="slaves:latest",name=c_name,entrypoint="sh -c 'sleep 10 && python master_v4.py '"+c_name+"' && python db_op.py'",links={"zoo":"zoo","rmq":"rmq"},\
 network="cloud",restart_policy={"Name":"on-failure"},detach=True,privileged=True)
-        pid = worker_cont.top()
-        worker_cont.exec_run('sh -c "sleep 20 && python master_v4.py"',environment={"PID":pid})
+#        pid = worker_cont.top()
+#        worker_cont.exec_run('sh -c "sleep 20 && python master_v4.py"',environment={"PID":pid})
         no_of_slaves_avaliable = no_of_slaves_available + 1
 # docker run -it --rm --network cloud -e 10 --entrypoint python master_v4.py slaves 
 @zksession.zk.ChildrenWatch('/workers',send_event=True)
@@ -150,10 +162,8 @@ tl.start()
 def write():
     body = request.get_json()
     state = 'write'
-    response = read_write.call(json.dumps(body),state)
-    response = json.loads(response)
-    print(response)
-    return Response(jsonify(response["res"]), status=200, mimetype='application/json')
+    read_write.call(json.dumps(body),state)
+    return str(200)
 
 @app.route("/api/v1/db/read", methods={'POST'})
 def read():
@@ -164,21 +174,21 @@ def read():
     response = read_write.call(json.dumps(body),state)
     response = json.loads(response)
     print(response)    
-    return Response(jsonify(response["res"]), status=200, mimetype='application/json')
+    return response
 
 @app.route("/api/v1/crash/master", methods={'POST'})
 def master_kill():
     l=[]
     master_id = zksession.get_master_PID()
     if (master_id is not None): 
-        client = docker.from_env()
+        #client = docker.from_env()
         client.kill(master_id)
         l.append(str(master_id))
         return Response(json.dumps(l), status=200, mimetype='application/json')
 
 @app.route("/api/v1/crash/slave", methods={'POST'})
 def slave_kill():
-    client=docker.from_env()
+    #client=docker.from_env()
     '''
     ids=[]
     for container in client.containers.list():
@@ -187,11 +197,16 @@ def slave_kill():
     slave_to_kill=ids[-1]
     '''
     slave_to_kill = zksession.get_highest_slave()
-    if (slave_to_kill != None):
-        for container in client.containers.list():
-            if(container.id==slave_to_kill):
-                container.kill()
-        return Response(json.dumps(list(str(slave_to_kill))), status=200, mimetype='application/json')
+    print(slave_to_kill)
+    #if (slave_to_kill != None):
+    l = client.containers.list()
+    for container in l:
+       # if(int(container.top()['Processes'][0][1])==int(slave_to_kill))
+        pids.append(int(container.top()['Processes'][0][1]))
+    mpid = max(pids)
+    container = l[pids.index(mpid)]    
+    container.kill()
+    return Response(json.dumps(), status=200, mimetype='application/json')
     
 
 @app.route("/api/v1/worker/list", methods={'GET'})
@@ -213,7 +228,7 @@ def delete_db():
     body = {}
     body["action"] = "delete_db"
     response = r.post(url = "http://34.203.18.244/api/v1/db/write", json = body)
-    return {},200
+    return str(200)
 	#if response.status_code != 201:
         #raise BadRequest("some error occurred")
 

@@ -20,38 +20,50 @@ class Ride(Base):
     #ride_users = relationship("RideUsers", cascade="all,delete")
 
     def store(self):
+        print("in store 1")
+       # = __import__('master_v4.py')
+       # import master_v4 as check
+        print("in store")
         current_session.add(self)
         current_session.commit()
         return self.rideId
 
     def delete(self):
+        #= __import__('master_v4.py')
         current_session.delete(self)
         current_session.commit()
     @staticmethod
     def getRides():
+        #= __import__('master_v4.py')
         return current_session.query(Ride).all()
     @staticmethod
     def getByRideId(rideId):
+        #= __import__('master_v4.py')
         return current_session.query(Ride).get(rideId)
 
     @staticmethod
     def getByUsername(username):
+        #= __import__('master_v4.py')
         return current_session.query(Ride).filter(Ride.created_by == username).one_or_none()
 
     @staticmethod
     def listBySource(source):
+        #= __import__('master_v4.py')
         return current_session.query(Ride).filter(Ride.source == source).all()
 
     @staticmethod
     def listByDestination(destination):
+        #= __import__('master_v4.py')
         return current_session.query(Ride).filter(Ride.destination == destination).all()
 
     @staticmethod
     def listUpcomingRides(source, destination):
+        #= __import__('master_v4.py')
         return current_session.query(Ride).filter(Ride.source == source).filter(Ride.destination == destination).filter(Ride.timestamp >= datetime.now()).all()
 
     @staticmethod
     def getRideId(created_by, source, destination, timestamp):
+        #= __import__('master_v4.py')
         return current_session.query(Ride).filter(Ride.created_by == created_by).filter(Ride.source == source).filter(Ride.destination == destination).filter(Ride.timestamp == timestamp).one()
 
 
@@ -63,14 +75,17 @@ class RideUsers(Base):
 
     @staticmethod
     def getByRideId(rideId):
+        #= __import__('master_v4.py')
         return current_session.query(RideUsers).filter(RideUsers.rideId == rideId).all()
 
     def store(self):
+        #= __import__('master_v4.py')
         current_session.add(self)
         current_session.commit()
         return self.rideId
 
     def delete(self):
+        #= __import__('master_v4.py')
         current_session.delete(self)
         current_session.commit()
 
@@ -84,15 +99,20 @@ class User(Base):
 
     @staticmethod
     def getByUsername(username):
+        #= __import__('master_v4.py')
         return current_session.query(User).filter(User.username == username).one_or_none()
     @staticmethod
     def getUsers():
+        #= __import__('master_v4.py')
         return current_session.query(User).all()
 
     def store(self):
+        #= __import__('master_v4.py')
+        print('IN DB YOOO')
         current_session.add(self)
         current_session.commit()
 
     def delete(self):
+        #= __import__('master_v4.py')
         current_session.delete(self)
         current_session.commit()
