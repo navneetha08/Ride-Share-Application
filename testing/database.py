@@ -1,98 +1,213 @@
-from sqlalchemy import Column, Integer, Sequence, String, ForeignKey, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
-from flask_sqlalchemy_session import current_session
-from sqlalchemy import create_engine
-#from database_users import User
 from datetime import datetime
+import sqlite3
+
+conn = sqlite3.connect('rideshare.db')
 
 
-Base = declarative_base()
-
-
-class Ride(Base):
+class Ride:
     __tablename__ = 'ride'
-    rideId = Column(Integer, primary_key=True, autoincrement=True)
-    created_by = Column(String(80), nullable=False)
-    source = Column(Integer, nullable=False)
-    destination = Column(Integer, nullable=False)
-    timestamp = Column(DateTime, nullable=False)
-    #ride_users = relationship("RideUsers", cascade="all,delete")
+
+    def __init__(self, created_by, source, destination, timestamp, rideId=None):
+        self.created_by = created_by
+        self.source = source
+        self.destination = destination
+        self.timestamp = timestamp
+        self.rideId = rideId
 
     def store(self):
-        current_session.add(self)
-        current_session.commit()
+        c = conn.cursor()
+        c.execute(
+            'INSERT INTO ride (created_by, source, destination, timestamp) VALUES (?, ?, ?, ?)', [self.created_by,
+                                                                                                  self.source, self.destination, self.timestamp])
+
+        self.rideId = c.lastrowid
+
+        conn.commit()
         return self.rideId
 
     def delete(self):
-        current_session.delete(self)
-        current_session.commit()
+        c = conn.cursor()
+        c.execute(
+            'DELETE FROM ride WHERE rideId = ?', [self.rideId])
+        conn.commit()
+
     @staticmethod
     def getRides():
-        return current_session.query(Ride).all()
+        rides = list()
+        c = conn.execute(
+            "SELECT rideId, created_by, source, destination, timestamp from ride")
+
+        for row in c:
+            r = Ride(rideId=row[0], created_by=row[1], source=row[
+                     2], destination=row[3], timestamp=row[4])
+            rides.append(r)
+        return rides
+
     @staticmethod
     def getByRideId(rideId):
-        return current_session.query(Ride).get(rideId)
+        c = conn.execute(
+            "SELECT rideId, created_by, source, destination, timestamp from ride WHERE rideId = ?", [rideId])
+        row = c.fetchone()
+        if (row is None):
+            return None
+
+        r = Ride(rideId=row[0], created_by=row[1], source=row[
+            2], destination=row[3], timestamp=row[4])
+        return r
 
     @staticmethod
     def getByUsername(username):
-        return current_session.query(Ride).filter(Ride.created_by == username).one_or_none()
+        rides = list()
+        c = conn.execute(
+            "SELECT rideId, created_by, source, destination, timestamp from ride where created_by = ?", [username])
+
+        for row in c:
+            r = Ride(rideId=row[0], created_by=row[1], source=row[
+                     2], destination=row[3], timestamp=row[4])
+            rides.append(r)
+        return rides
 
     @staticmethod
     def listBySource(source):
-        return current_session.query(Ride).filter(Ride.source == source).all()
+        rides = list()
+        c = conn.execute(
+            "SELECT rideId, created_by, source, destination, timestamp from ride where source = ?", [source])
+
+        for row in c:
+            r = Ride(rideId=row[0], created_by=row[1], source=row[
+                     2], destination=row[3], timestamp=row[4])
+            rides.append(r)
+        return rides
 
     @staticmethod
     def listByDestination(destination):
-        return current_session.query(Ride).filter(Ride.destination == destination).all()
+        rides = list()
+        c = conn.execute(
+            "SELECT rideId, created_by, source, destination, timestamp from ride where destination = ?", [destination])
+
+        for row in c:
+            r = Ride(rideId=row[0], created_by=row[1], source=row[
+                     2], destination=row[3], timestamp=row[4])
+            rides.append(r)
+        return rides
 
     @staticmethod
     def listUpcomingRides(source, destination):
+        rides = list()
+        c = conn.execute(
+            "SELECT rideId, created_by, source, destination, timestamp from ride where source = ? and destination = ? and timestamp >= ?", [source, destination, datetime.now()])
+
+        for row in c:
+            r = Ride(rideId=row[0], created_by=row[1], source=row[
+                     2], destination=row[3], timestamp=row[4])
+            rides.append(r)
+        return rides
         return current_session.query(Ride).filter(Ride.source == source).filter(Ride.destination == destination).filter(Ride.timestamp >= datetime.now()).all()
 
     @staticmethod
     def getRideId(created_by, source, destination, timestamp):
-        return current_session.query(Ride).filter(Ride.created_by == created_by).filter(Ride.source == source).filter(Ride.destination == destination).filter(Ride.timestamp == timestamp).one()
+        c = conn.execute(
+            "SELECT rideId, created_by, source, destination, timestamp from ride where source = ? and destination = ? and timestamp = ?", [source, destination, timestamp])
+        row = c.fetchone()
+        if (row is None):
+            return None
+
+        r = Ride(rideId=row[0], created_by=row[1], source=row[
+            2], destination=row[3], timestamp=row[4])
+        return r
 
 
-class RideUsers(Base):
+class RideUsers():
     __tablename__ = 'ride_users'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    rideId = Column(Integer,nullable=False)
-    username = Column(String(80), ForeignKey(Ride.created_by),nullable=False)
+    # id = Column(Integer, primary_key=True, autoincrement=True)
+    # rideId = Column(Integer, nullable=False)
+    # username = Column(String(80), ForeignKey(Ride.created_by), nullable=False)
+
+    def __init__(self, username, ride_id, id=None):
+        self.id = id
+        self.username = username
+        self.rideId = ride_id
 
     @staticmethod
     def getByRideId(rideId):
-        return current_session.query(RideUsers).filter(RideUsers.rideId == rideId).all()
+        users = list()
+        c = conn.execute(
+            "SELECT id, rideId, username from ride_users")
+
+        for row in c:
+            u = RideUsers(id=row[0], ride_id=row[1], username=row[
+                2])
+            users.append(u)
+        return users
 
     def store(self):
-        current_session.add(self)
-        current_session.commit()
-        return self.rideId
+        c = conn.cursor()
+        c.execute(
+            'INSERT INTO ride_users (rideId, username) VALUES (?, ?)', [self.rideId,
+                                                                        self.username])
+
+        self.id = c.lastrowid
+
+        conn.commit()
+        return self.id
 
     def delete(self):
-        current_session.delete(self)
-        current_session.commit()
+        c = conn.cursor()
+        c.execute(
+            'DELETE FROM ride_users WHERE id = ?', [self.id])
+        conn.commit()
 
-class User(Base):
+
+class User():
     __tablename__ = 'user'
-    user_id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String(80), unique=True, nullable=False)
-    password = Column(String(40), nullable=False)
+    # user_id = Column(Integer, primary_key=True, autoincrement=True)
+    # username = Column(String(80), unique=True, nullable=False)
+    # password = Column(String(40), nullable=False)
     # ride = relationship("Ride", cascade="all,delete")
     # ride_users = relationship("RideUsers", cascade="all,delete")
 
+    def __init__(self, username, password, user_id=None):
+        self.user_id = user_id
+        self.username = username
+        self.password = password
+
     @staticmethod
     def getByUsername(username):
-        return current_session.query(User).filter(User.username == username).one_or_none()
+        c = conn.execute(
+            "SELECT user_id, username, password from user WHERE username = ?", [username])
+        row = c.fetchone()
+        if (row is None):
+            return None
+
+        u = User(user_id=row[0], username=row[1], password=row[
+            2])
+        return r
+
     @staticmethod
     def getUsers():
-        return current_session.query(User).all()
+        users = list()
+        c = conn.execute(
+            "SELECT user_id, username, password from user")
+
+        for row in c:
+            u = User(user_id=row[0], username=row[1], password=row[
+                     2])
+            users.append(u)
+        return users
 
     def store(self):
-        current_session.add(self)
-        current_session.commit()
+        c = conn.cursor()
+        c.execute(
+            'INSERT INTO user (username, password) VALUES (?, ?)', [self.username,
+                                                                    self.password])
+
+        self.user_id = c.lastrowid
+
+        conn.commit()
+        return self.user_id
 
     def delete(self):
-        current_session.delete(self)
-        current_session.commit()
+        c = conn.cursor()
+        c.execute(
+            'DELETE FROM user WHERE user_id = ?', [self.user_id])
+        conn.commit()
