@@ -11,10 +11,11 @@ from werkzeug.exceptions import MethodNotAllowed
 import docker
 import logging
 from kazoo.client import KazooClient,KazooState
-from timeloop import Timeloop
 from datetime import timedelta
 import time
+import requests
 from math import ceil
+from apscheduler.schedulers.background import BackgroundScheduler
 
 logging.basicConfig()
 port = 80
@@ -23,47 +24,23 @@ app = Flask(__name__)
 global db_read_count
 db_read_count = 0
 
-tl = Timeloop()
+client = docker.from_env()
 
-'''
-class ZookeeperOrch(object):
+
+class ZooKeeperConnect:
     def __init__(self):
-        self.zk = KazooClient(hosts='zookeeper:2181')
+        self.zk = KazooClient(hosts='zoo:2181')
         self.zk.start()
         self.zk.ensure_path('/workers')
-        try:
-            self.zk.create('/election/leader',makepath=True)
-        except:
-            pass
-    
-    def get_master_PID(self):
-        try:
-            master_data, master_stat = self.zk.get('/workers/master')
-            return master_data
-        except:
-            return None
+
+    def get_master_node_pid(self):
+        return self.zk.get(self.zk.get_children('/workers/master')[0])[0].decode('utf-8')
 
     def get_workers(self):
-        worker_nodes = self.zk.get_children('/workers')
-        worker_pid = [] 
-        for i in worker_nodes:
-            data,stat=self.zk.get('/workers/'+i)
-            data = data.decode('utf-8')
-            worker_pid.append(int(data))
-        workers = sorted(worker_pid)
-        return workers
-    
-    def get_highest_slave(self):
-        workers = self.get_workers()
-        slave = max(workers)
-        slave = workers
-        pid = self.get_master_PID()
-        if (pid is not None):    
-            if (slave != pid):
-                return slave
-        else: 
-            return slave
-'''
+        self.zk.ensure_path('/workers/node')
+        return self.zk.get_children('/workers/node')
+
+zookeepersession = ZooKeeperConnect()
 
 class ReadWriteRequests(object):
 
@@ -118,46 +95,37 @@ class ReadWriteRequests(object):
         print('Reponse:', self.response)
         return self.response
 
-client = docker.from_env()
 
-#zksession = ZookeeperOrch()
+def create_slave_node():
+    print ("creating new slave node")
+    worker_cont=client.containers.run(image="slave:latest", command='sh -c "python master_v4.py"',links={"zoo":"zoo","rabbitmq":"rabbitmq"},\
+network="ccproj",restart_policy={"Name":"on-failure"},volumes = {'/var/run/docker.sock':{'bind':'/var/run/docker.sock'}}, name="slave"+ str(time.time()), detach=True)
 
 #takes care of scaling
-@tl.job(interval=timedelta(seconds=120))
+'''
+def scaling():
+    create_slave_node()
+'''
+
+#takes care of scaling
 def scaling():
     global db_read_count
-    print("in scaling function")
-    '''
-    no_of_slaves_reqd = ceil(db_read_count/20) 
-    no_of_slaves_available = len(zksession.get_workers())-1
+    no_of_slaves_reqd = ceil(db_read_count/20)
+    if no_of_slaves_reqd == 0:
+        no_of_slaves_reqd = 1
+    no_of_slaves_available = len(zookeepersession.get_workers())
+    print("in scaling function reqd: %s available : %s" %( str(no_of_slaves_reqd), str(no_of_slaves_available) ))
     db_read_count = 0
-    while (no_of_slaves_available>no_of_slaves_reqdi:
-        body='' #Not sure of this part
-        r.post("%s/api/v1/crash/slave" % (localhost_url), json = body)
+    localhost_url = "127.0.0.1:80"
+    while (no_of_slaves_available>no_of_slaves_reqd):
+        body={} #Not sure of this part
+        requests.post("%s/api/v1/crash/slave" % (localhost_url), json = json.dumps(body))
+        no_of_slaves_available = no_of_slaves_available - 1;
         #add code to scale up
     while (no_of_slaves_available<no_of_slaves_reqd):
-        client = docker.from_env()
-        worker_cont=client.containers.run(image="slaves:latest",entrypoint="sh -c 'while true;do : ;done'",links={"zoo":"zoo","rabbitmq":"rabbitmq"},\
-network="ccproj",restart_policy={"Name":"on-failure"},detach=True,privileged=True,cpu_shares=96)
-        pid = worker_cont.top()
-        worker_cont.exec_run('sh -c "sleep 20 && python master_v4.py"',environment={"PID":pid})
+        create_slave_node()
         no_of_slaves_avaliable = no_of_slaves_available + 1
 
-
-@zksession.zk.ChildrenWatch('/workers',send_event=True)
-def availability(children,event):
-    if(event!=None):
-   	 if (event.type=='DELETED' or event.state=='EXPIRED_SESSION'):
-        	if zksession.zk.exists('/workers/master'):
-            		scaling()
-for i in range(2):
-        print('starting slave:', i)
-        worker_cont=client.containers.run(image='slaves:latest',entrypoint="sh -c 'master_v4.py'",links={'zoo':'zoo','rabbitmq':'rabbitmq'},\
-network="ccproj",restart_policy={"Name":"on-failure"},detach=True,privileged=True, cpu_shares=96)
-        # pid = worker_cont.top()['Processes'][0][-1]
-        # worker_cont.exec_run('sh -c "master_v4.py"',environment={"PID":pid})
-'''
-tl.start()
 
 @app.route("/api/v1/db/rep", methods={'GET'})
 def get_file():
@@ -207,7 +175,7 @@ def master_kill():
 
 @app.route("/api/v1/crash/slave", methods={'POST'})
 def slave_kill():
-    l=client.container.list()[3:]
+    l=client.container.list()
     ids=[]
     for i in l:
         id=i.top()
@@ -226,6 +194,8 @@ def list_cont():
 
 
 if __name__ == "__main__":
-    app.run(port = port,debug=True,host="0.0.0.0",use_reloader=True,threaded=True)
-    tl.stop()
-
+    scaling()
+    scheduler = BackgroundScheduler()
+    job = scheduler.add_job(scaling, 'interval', minutes=2)
+    scheduler.start()
+    app.run(port = port,debug=True,host="0.0.0.0",threaded=True)

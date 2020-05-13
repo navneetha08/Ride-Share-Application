@@ -28,8 +28,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "python orchestrator.py"
-    ports:       
+    command: sh -c "./wait-for-it.sh -t 100 127.0.0.1:15672 -- python orchestrator.py"
+    ports: 
     - "80:80"
     volumes:
     - .:/code
@@ -42,11 +42,12 @@ services:
     networks:
       - default
 
-  worker:
+  master:
+    image: slave
     build:
       context: .
       dockerfile: Dockerfile
-    command: sh -c "./wait-for-it.sh -t 100 127.0.0.1:5672 -- python master_v4.py"
+    command: sh -c "./wait-for-it.sh -t 100 127.0.0.1:15672 -- python master_v4.py"
     volumes:
     - .:/code
     - /var/run/docker.sock:/var/run/docker.sock

@@ -2,13 +2,6 @@ import pika
 import os
 import json
 import random
-from flask import Flask
-from flask import request, abort, jsonify, render_template
-from flask_sqlalchemy import SQLAlchemy
-from flask import Response
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from flask_sqlalchemy_session import flask_scoped_session
 from werkzeug.exceptions import BadRequest
 from werkzeug.exceptions import NotFound
 from werkzeug.exceptions import InternalServerError
@@ -17,61 +10,73 @@ import database
 import logging
 from kazoo.client import KazooClient,KazooState
 from threading import Timer
+import os
+import docker
+import time
 
 logging.basicConfig()
-'''
-connection = pika.BlockingConnection(
-    pika.ConnectionParameters(host='localhost'))
 
-channel = connection.channel()
-'''
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq'))
 channel = connection.channel()
-pid = os.getenv('PID', str(random.randrange(1, 99999)))
-#c_connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq',heartbeat=300))
-#c_channel = c_connection.channel()
+pid = str(os.getpid())
+client = docker.from_env()
+slave_ctr = 0
 
 class ZooKeeperConnect:
     def __init__(self):
         self.zk = KazooClient(hosts='zoo:2181')
         self.zk.start()
         self.zk.ensure_path('/workers')
-        #code to get container PID => self.PID=PID
-        self.PID=pid
-        self.w_queue=''
-        self.node_path = self.zk.create('/workers/node',ephemeral=True,sequence=True,value=self.PID.encode('utf-8')) #value='self.PID'
-        '''
+        self.PID=str(pid)
+        self.node_path = self.zk.create('/workers/node/c_',ephemeral=True, sequence=True,value=bytes(self.PID, 'utf-8'), makepath=True) #value='self.PID'
+        self.master_id = None
+        print ("node path is %s" % (self.node_path))
         try:
-            master_id, master_stat = self.zk.get('/workers/master',watch=am_i_leader)
-        except (NoNodeError,ZookeeperError):            
-            self.zk.create_async('/workers/master',b'1000',ephemeral=True)
+            self.create_master_node()
+        except Exception as ex:
+            print (ex)
             self.zk.delete(self.node_path)
-        '''
 
-    def get_master_id(self):
-        try:
-            master_id, master_stat = self.zk.get('/election/leader')
-            return master_id.decode('utf-8')
-        except:
-            return None
+    def create_master_node(self):
+        if (self.zk.exists('/workers/master') == None):
+            self.master_id = str(pid)
+            master_node_path = self.zk.create('/workers/master/m_', bytes(self.PID, 'utf-8'), ephemeral=True, makepath=True, sequence=True)
+            print ("master node path is ", master_node_path)
+            self.zk.delete(self.node_path)
+        else:
+            self.master_id = self.zk.get(self.zk.get_children('/workers/master')[0])[0].decode('utf-8')
+            print ("master node pid is ", self.master_id)
 
-    def am_i_leader(self):
-        master_id = self.get_master_id()
-        if master_id is not None:
-            if (master_id == self.PID):
-                return True
-            else:
-                return False
+    def is_master(self):
+        if self.master_id is None:
+            return False
+        if (self.master_id == self.PID):
+            return True
         else:
             return False
-    
-    def create_master_node(self):
-        self.zk.create('/workers/master',bytes(self.PID,'utf-8'),ephemeral=True)
-        self.zk.delete(self.node_path)
- 
-        
+
 zookeepersession = ZooKeeperConnect()
 
+
+def create_slave_node():
+    if (zookeepersession.is_master()):
+        print ("creating new slave node")
+        zookeepersession.zk.create('/workers/node/c_',ephemeral=True, sequence=True,value=bytes(work_cont.top(), 'utf-8'), makepath=True)
+        worker_cont=client.containers.run(image="slave:latest", command='sh -c "./wait-for-it.sh -t 10 127.0.0.1:5672 -- python master_v4.py"',links={"zoo":"zoo","rabbitmq":"rabbitmq"},\
+network="ccproj",restart_policy={"Name":"on-failure"},volumes = {'/var/run/docker.sock':{'bind':'/var/run/docker.sock'}}, name="slave" + str(time.time()))
+
+
+@zookeepersession.zk.DataWatch('/workers/node')
+def elect_leader(data,stat,event):
+    print ("event received is %s", str(event))
+    try:
+        if (event.type=='DELETED'):
+            if (zookeepersession.is_master()):
+                pass
+            t = Timer(10.0, create_slave_node)
+    except Exception as ex:
+        print(ex)
+        pass
 
 read_result = channel.queue_declare(queue='read_queue',)
 write_result = channel.queue_declare(queue='write_queue',)
@@ -288,33 +293,6 @@ def on_request_read_write(ch, method, props, body):
                      body=str(response))
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
-def set_leader(data):
-    if (data==zookeepersession.PID):
-        zookeepersession.create_master_node()
-        channel.basic_cancel(consumer_tag='slave_sync')
-        channel.basic_cancel(consumer_tag='slave_read')
-        write_result = channel.queue_declare(queue='write_queue',)
-        sync_master = channel.queue_declare(queue='sync_queue',)
-        w_queue = write_result.method.queue
-        master_sync = sync_master.method.queue
-        channel.basic_consume(queue=w_queue, on_message_callback=on_request_read_write,consumer_tag='master_write')
-        #master = True # it is master
-        #code to close/block read_queue
-
-@zookeepersession.zk.DataWatch('/workers/master')
-def elect_leader(data,stat,event):
-    if (data==None):
-        try:
-            zookeepersession.zk.set('/election/master',bytes(zookeepersession.PID,'utf-8')) 
-        except:
-            pass
-    elif (event.type=='DELETED' or event.type=='CHANGED' or event.state=='EXPIRED_SESSION'):
-        if (atoi(zookeepersession.PID)<atoi(data)):
-            zookeepersession.zk.set('/election/master',bytes(zookeepersession.PID,'utf-8'))
-            t = Timer(10.0,set_leader,[data])
-            t.start()
-#    else:
-#     continue
 
 def on_request_sync(ch, method, props, body):
     if method.routing_key == 'sync_queue':
@@ -323,9 +301,14 @@ def on_request_sync(ch, method, props, body):
 
 channel.basic_qos(prefetch_count=1)
 
-channel.basic_consume(queue='write_queue', on_message_callback=on_request_read_write, consumer_tag='master_write')
-channel.basic_consume(queue= r_queue, on_message_callback=on_request_read_write, consumer_tag='slave_read')
-channel.basic_consume(queue = s_queue, on_message_callback=on_request_sync, consumer_tag='slave_sync')
+if zookeepersession.is_master():
+    print ("pid for master = %s" % (zookeepersession.PID))
+    channel.basic_consume(queue='write_queue', on_message_callback=on_request_read_write, consumer_tag='master_write')
+
+if not zookeepersession.is_master():
+    print ("pid for slave = %s" % (zookeepersession.PID))
+    channel.basic_consume(queue= r_queue, on_message_callback=on_request_read_write, consumer_tag='slave_read')
+    channel.basic_consume(queue = s_queue, on_message_callback=on_request_sync, consumer_tag='slave_sync')
 
 print(" [x] Awaiting Read Write requests")
 # channel.start_consuming()
