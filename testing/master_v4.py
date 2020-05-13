@@ -1,6 +1,7 @@
 import pika
 import os
 import json
+import random
 from flask import Flask
 from flask import request, abort, jsonify, render_template
 from flask_sqlalchemy import SQLAlchemy
@@ -24,14 +25,13 @@ connection = pika.BlockingConnection(
 
 channel = connection.channel()
 '''
-connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq',heartbeat=300))
+connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq'))
 channel = connection.channel()
-pid = os.environ('PID')
+pid = os.getenv('PID', str(random.randrange(1, 99999)))
 #c_connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq',heartbeat=300))
 #c_channel = c_connection.channel()
 
-class ZooKeeperConnect(object):
-    master = False
+class ZooKeeperConnect:
     def __init__(self):
         self.zk = KazooClient(hosts='zoo:2181')
         self.zk.start()
@@ -51,7 +51,7 @@ class ZooKeeperConnect(object):
     def get_master_id(self):
         try:
             master_id, master_stat = self.zk.get('/election/leader')
-            return master_id
+            return master_id.decode('utf-8')
         except:
             return None
 
@@ -74,6 +74,7 @@ zookeepersession = ZooKeeperConnect()
 
 
 read_result = channel.queue_declare(queue='read_queue',)
+write_result = channel.queue_declare(queue='write_queue',)
 sync_result = channel.queue_declare(queue='sync_queue',)
 r_queue = read_result.method.queue
 s_queue = sync_result.method.queue
@@ -187,26 +188,27 @@ def db_delete_user(json):
 
 def read_from_db(body):
     body = json.loads(body)
-    if "action" not in body:
-        raise BadRequest("action not passed")
+    if body is None or "action" not in body:
+        x={"res": "invalid request", "error": 400}
+        return(json.dumps(x))
     
     action = body["action"]
     
     if action == "list_upcoming_ride":
-        x={"res":Response(json.dumps(db_list_ride(body)), status=200, mimetype='application/json')}
+        x={"res":db_list_ride(body)}
         return(json.dumps(x)) 
 
     elif action == "get_ride":
-        x={"res":Response(json.dumps(db_get_ride(body)), status=200, mimetype='application/json')}
+        x={"res":db_get_ride(body)}
         return(json.dumps(x)) 
     elif action == "get_user":
-        x={"res": Response(json.dumps(db_get_user(body)), status=200, mimetype='application/json')}
+        x={"res": db_get_user(body)}
         return(json.dumps(x)) 
     elif action =="list_users":
-        x={"res": Response(json.dumps(db_list_users(body)),status=200, mimetype='application/json')}
+        x={"res": db_list_users(body)}
         return(json.dumps(x)) 
     elif action =='num_ride':
-        x={"res": Response(json.dumps(db_num_rides(body)),status=200, mimetype='application/json')}
+        x={"res": db_num_rides(body)}
         return(json.dumps(x)) 
     else:
         raise BadRequest("unrecognized action %s" % (action))
@@ -220,31 +222,31 @@ def write_to_db(body):
     try:
         if action == "add_user":
             db_add_user(body)
-            x={"res":Response(None, status=201, mimetype='application/json')}
+            x={"res": {}}
             return(json.dumps(x)) 
 
         elif action == "delete_user":
             db_delete_user(body)
-            x={"res":Response(None, status=201, mimetype='application/json')}
+            x={"res": {}}
             return(json.dumps(x)) 
 
         elif action == "add_ride":
             ride_id = db_create_ride(body)
-            x={"res":Response(json.dumps({"ride_id": ride_id}), status=201, mimetype='application/json')}
+            x={"res": {"ride_id": ride_id}}
             return(json.dumps(x)) 
         
         elif action == "delete_ride":
             db_delete_ride(body)
-            x={"res":Response(None, status=201, mimetype='application/json')}
+            x={"res": {}}
             return(json.dumps(x)) 
         
         elif action == "join_ride":
             db_join_ride(body)
-            x={"res":Response(None, status=201, mimetype='application/json')}
+            x={"res":{}}
             return(json.dumps(x)) 
         elif action == "delete_db":
             db_delete_db(body)
-            x={"res":Response(None, status=201, mimetype='application/json')}
+            x={"res":{}}
             return(json.dumps(x)) 
         else:
             raise BadRequest("unrecognized action %s" % (action))
@@ -255,22 +257,36 @@ def write_to_db(body):
         raise BadRequest("invalid request")
 
 def on_request_read_write(ch, method, props, body):
+    try:
+        if method.routing_key == 'read_queue':
+            response = read_from_db(body)
+        elif method.routing_key == 'write_queue':
+            print('got write message')
+            response = write_to_db(body)
+            #ch.basic_publish(queue=s_queue, routing_key='sync_queue', body= body)
 
-    if method.routing_key == 'read_queue':
-        response = read_from_db(body)
-    elif method.routing_key == 'write_queue':
-        response = write_to_db(body)
-        ch.basic_publish(exchange='',routing_key='sync_queue', body= body)
-    
+        print(response,method.routing_key)
 
-    print(response,method.routing_key)
-
-    ch.basic_publish(exchange='',
+        ch.basic_publish(exchange='',
                      routing_key=props.reply_to,
                      properties=pika.BasicProperties(correlation_id = \
                                                          props.correlation_id),
                      body=str(response))
-    ch.basic_ack(delivery_tag=method.delivery_tag)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+    except Exception as ex:
+        print(ex)
+        desc = ex.description
+        if ex.description is None:
+            desc = "invalid request"
+        response = json.dumps({"res": desc, "error": 400})
+        print(response,method.routing_key)
+
+        ch.basic_publish(exchange='',
+                     routing_key=props.reply_to,
+                     properties=pika.BasicProperties(correlation_id = \
+                                                         props.correlation_id),
+                     body=str(response))
+        ch.basic_ack(delivery_tag=method.delivery_tag)
 
 def set_leader(data):
     if (data==zookeepersession.PID):
@@ -307,19 +323,11 @@ def on_request_sync(ch, method, props, body):
 
 channel.basic_qos(prefetch_count=1)
 
-channel.basic_consume(queue= r_queue, on_message_callback=on_request_read_write,consumer_tag='slave_read')
-channel.basic_consume(queue = s_queue,on_message_callback=on_request_sync,consumer_tag='slave_sync')
+channel.basic_consume(queue='write_queue', on_message_callback=on_request_read_write, consumer_tag='master_write')
+channel.basic_consume(queue= r_queue, on_message_callback=on_request_read_write, consumer_tag='slave_read')
+channel.basic_consume(queue = s_queue, on_message_callback=on_request_sync, consumer_tag='slave_sync')
 
-
-
-
-project_dir = os.path.dirname(os.path.abspath(__file__))
-database_file = "sqlite:///{}".format(
-os.path.join(project_dir, "rideshare.db"))
-
-    # initialize database
-engine = create_engine(database_file, echo=True)
-database.Base.metadata.create_all(engine, checkfirst=True)
-session_factory = sessionmaker(bind=engine)
 print(" [x] Awaiting Read Write requests")
-channel.start_consuming()
+# channel.start_consuming()
+while True:
+    connection.process_data_events()
