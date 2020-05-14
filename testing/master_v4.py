@@ -13,14 +13,15 @@ from threading import Timer
 import os
 import docker
 import time
+import random
 
 logging.basicConfig()
 
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq'))
 channel = connection.channel()
-pid = str(os.getpid())
+pid = str(random.randrange(10000))
 client = docker.from_env()
-slave_ctr = 0
+last_known_children = list()
 
 class ZooKeeperConnect:
     def __init__(self):
@@ -35,7 +36,6 @@ class ZooKeeperConnect:
             self.create_master_node()
         except Exception as ex:
             print (ex)
-            self.zk.delete(self.node_path)
 
     def create_master_node(self):
         if (self.zk.exists('/workers/master') == None):
@@ -44,7 +44,8 @@ class ZooKeeperConnect:
             print ("master node path is ", master_node_path)
             self.zk.delete(self.node_path)
         else:
-            self.master_id = self.zk.get(self.zk.get_children('/workers/master')[0])[0].decode('utf-8')
+            _tuple = self.zk.get('/workers/master/' + self.zk.get_children('/workers/master')[0])
+            self.master_id = _tuple[0].decode('utf-8')
             print ("master node pid is ", self.master_id)
 
     def is_master(self):
@@ -61,28 +62,38 @@ zookeepersession = ZooKeeperConnect()
 def create_slave_node():
     if (zookeepersession.is_master()):
         print ("creating new slave node")
-        zookeepersession.zk.create('/workers/node/c_',ephemeral=True, sequence=True,value=bytes(work_cont.top(), 'utf-8'), makepath=True)
         worker_cont=client.containers.run(image="slave:latest", command='sh -c "./wait-for-it.sh -t 10 127.0.0.1:5672 -- python master_v4.py"',links={"zoo":"zoo","rabbitmq":"rabbitmq"},\
 network="ccproj",restart_policy={"Name":"on-failure"},volumes = {'/var/run/docker.sock':{'bind':'/var/run/docker.sock'}}, name="slave" + str(time.time()))
+        zookeepersession.zk.create('/workers/node/c_',ephemeral=True, sequence=True,value=bytes(work_cont.top(), 'utf-8'), makepath=True)
 
 
-@zookeepersession.zk.DataWatch('/workers/node')
-def elect_leader(data,stat,event):
+@zookeepersession.zk.ChildrenWatch('/workers/node', send_event=True, allow_session_lost=True)
+def slave_fault_tolerance_handler(children, event):
+    global last_known_children
+    print ("list of children are : ", str(children))
     print ("event received is %s", str(event))
+    if (event is None):
+        last_known_children = children
+        return True
     try:
-        if (event.type=='DELETED'):
-            if (zookeepersession.is_master()):
-                pass
-            t = Timer(10.0, create_slave_node)
+        if (len(last_known_children) > len(children)):
+            last_known_children = children
+            create_slave_node()
     except Exception as ex:
         print(ex)
-        pass
+    finally:
+        return True
 
 read_result = channel.queue_declare(queue='read_queue',)
 write_result = channel.queue_declare(queue='write_queue',)
 sync_result = channel.queue_declare(queue='sync_queue',)
 r_queue = read_result.method.queue
 s_queue = sync_result.method.queue
+
+channel.exchange_declare(exchange='db_sync',
+                         exchange_type='fanout', durable=True)
+
+channel.queue_bind(exchange='db_sync', queue=s_queue)
 
 def db_delete_db(json):
     users=database.User.getUsers()
@@ -262,13 +273,14 @@ def write_to_db(body):
         raise BadRequest("invalid request")
 
 def on_request_read_write(ch, method, props, body):
+    print ("request with routing_key %s being handled by pid : %s, is master : %s" % (method.routing_key, str(pid), str(zookeepersession.is_master())))
     try:
         if method.routing_key == 'read_queue':
             response = read_from_db(body)
         elif method.routing_key == 'write_queue':
             print('got write message')
             response = write_to_db(body)
-            #ch.basic_publish(queue=s_queue, routing_key='sync_queue', body= body)
+            ch.basic_publish(exchange='db_sync', routing_key='sync_queue', body = body)
 
         print(response,method.routing_key)
 
@@ -308,7 +320,7 @@ if zookeepersession.is_master():
 if not zookeepersession.is_master():
     print ("pid for slave = %s" % (zookeepersession.PID))
     channel.basic_consume(queue= r_queue, on_message_callback=on_request_read_write, consumer_tag='slave_read')
-    channel.basic_consume(queue = s_queue, on_message_callback=on_request_sync, consumer_tag='slave_sync')
+    channel.basic_consume(queue = s_queue, on_message_callback=on_request_sync, consumer_tag='slave_sync', auto_ack=True)
 
 print(" [x] Awaiting Read Write requests")
 # channel.start_consuming()

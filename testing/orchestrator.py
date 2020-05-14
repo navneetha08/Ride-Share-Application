@@ -117,14 +117,17 @@ def scaling():
     print("in scaling function reqd: %s available : %s" %( str(no_of_slaves_reqd), str(no_of_slaves_available) ))
     db_read_count = 0
     localhost_url = "127.0.0.1:80"
+    '''
     while (no_of_slaves_available>no_of_slaves_reqd):
         body={} #Not sure of this part
         requests.post("%s/api/v1/crash/slave" % (localhost_url), json = json.dumps(body))
         no_of_slaves_available = no_of_slaves_available - 1;
         #add code to scale up
+    '''
     while (no_of_slaves_available<no_of_slaves_reqd):
+        print("in scaling while loop function reqd: %s available : %s" %( str(no_of_slaves_reqd), str(no_of_slaves_available) ))
         create_slave_node()
-        no_of_slaves_avaliable = no_of_slaves_available + 1
+        no_of_slaves_available = no_of_slaves_available + 1
 
 
 @app.route("/api/v1/db/rep", methods={'GET'})
@@ -194,8 +197,7 @@ def list_cont():
 
 
 if __name__ == "__main__":
-    scaling()
     scheduler = BackgroundScheduler()
-    job = scheduler.add_job(scaling, 'interval', minutes=2)
+    job = scheduler.add_job(scaling, 'interval', minutes=1)
     scheduler.start()
-    app.run(port = port,debug=True,host="0.0.0.0",threaded=True)
+    app.run(port = port,debug=True,host="0.0.0.0",threaded=True,use_reloader=False)
