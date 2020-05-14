@@ -102,7 +102,6 @@ class Ride:
                      2], destination=row[3], timestamp=row[4])
             rides.append(r)
         return rides
-        return current_session.query(Ride).filter(Ride.source == source).filter(Ride.destination == destination).filter(Ride.timestamp >= datetime.now()).all()
 
     @staticmethod
     def getRideId(created_by, source, destination, timestamp):
@@ -181,7 +180,7 @@ class User():
 
         u = User(user_id=row[0], username=row[1], password=row[
             2])
-        return r
+        return u
 
     @staticmethod
     def getUsers():

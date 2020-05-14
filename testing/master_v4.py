@@ -14,6 +14,8 @@ import os
 import docker
 import time
 import random
+import kazoo
+import traceback
 
 logging.basicConfig()
 
@@ -43,10 +45,12 @@ class ZooKeeperConnect:
             master_node_path = self.zk.create('/workers/master/m_', bytes(self.PID, 'utf-8'), ephemeral=True, makepath=True, sequence=True)
             print ("master node path is ", master_node_path)
             self.zk.delete(self.node_path)
+            kazoo.recipe.watchers.DataWatch(self.zk, self.master_node_path, func=delete_node_handler)
         else:
             _tuple = self.zk.get('/workers/master/' + self.zk.get_children('/workers/master')[0])
             self.master_id = _tuple[0].decode('utf-8')
             print ("master node pid is ", self.master_id)
+            kazoo.recipe.watchers.DataWatch(self.zk, self.node_path, delete_node_handler)
 
     def is_master(self):
         if self.master_id is None:
@@ -62,27 +66,33 @@ zookeepersession = ZooKeeperConnect()
 def create_slave_node():
     if (zookeepersession.is_master()):
         print ("creating new slave node")
+        node_path = zookeepersession.zk.create('/workers/node/c_',ephemeral=True, sequence=True,value=bytes(work_cont.top(), 'utf-8'), makepath=True)
         worker_cont=client.containers.run(image="slave:latest", command='sh -c "./wait-for-it.sh -t 10 127.0.0.1:5672 -- python master_v4.py"',links={"zoo":"zoo","rabbitmq":"rabbitmq"},\
 network="ccproj",restart_policy={"Name":"on-failure"},volumes = {'/var/run/docker.sock':{'bind':'/var/run/docker.sock'}}, name="slave" + str(time.time()))
-        zookeepersession.zk.create('/workers/node/c_',ephemeral=True, sequence=True,value=bytes(work_cont.top(), 'utf-8'), makepath=True)
+        kazoo.recipe.watchers.DataWatch(zookeepersession.zk, node_path, delete_node_handler)
 
 
 @zookeepersession.zk.ChildrenWatch('/workers/node', send_event=True, allow_session_lost=True)
 def slave_fault_tolerance_handler(children, event):
     global last_known_children
     print ("list of children are : ", str(children))
-    print ("event received is %s", str(event))
+    print ("list of last known children are : ", str(last_known_children))
+    print ("event received is : ", str(event))
     if (event is None):
         last_known_children = children
         return True
     try:
         if (len(last_known_children) > len(children)):
-            last_known_children = children
             create_slave_node()
     except Exception as ex:
         print(ex)
     finally:
+        last_known_children = children
         return True
+
+def delete_node_handler(data, stat):
+    if data is None and stat is None:
+        sys.exit(0)
 
 read_result = channel.queue_declare(queue='read_queue',)
 write_result = channel.queue_declare(queue='write_queue',)
@@ -263,7 +273,7 @@ def write_to_db(body):
         elif action == "delete_db":
             db_delete_db(body)
             x={"res":{}}
-            return(json.dumps(x)) 
+            return(json.dumps(x))
         else:
             raise BadRequest("unrecognized action %s" % (action))
     except BadRequest as ex:
@@ -292,6 +302,7 @@ def on_request_read_write(ch, method, props, body):
         ch.basic_ack(delivery_tag=method.delivery_tag)
     except Exception as ex:
         print(ex)
+        traceback.print_exc()
         desc = ex.description
         if ex.description is None:
             desc = "invalid request"

@@ -151,6 +151,19 @@ def write():
         raise BadRequest(response["res"])
     return Response(json.dumps(response["res"]), status=200, mimetype='application/json')
 
+
+@app.route("/api/v1/db/clear", methods={'POST'})
+def delete_db():
+    body = {"action": "delete_db"}
+    state = 'write'
+    read_write = ReadWriteRequests()
+    response = read_write.call(json.dumps(body),state)
+    response = json.loads(response)
+    print(response)
+    if ("error" in response):
+        raise BadRequest(response["res"])
+    return Response(json.dumps(response["res"]), status=200, mimetype='application/json')
+
 @app.route("/api/v1/db/read", methods={'POST'})
 def read():
     body = request.get_json()
@@ -165,35 +178,86 @@ def read():
         raise BadRequest(response["res"])
     return Response(json.dumps(response["res"]), status=200, mimetype='application/json')
 
+
+def list_only_masters():
+    workers_pid = list()
+    workers = zookeepersession.zk.get_children('/workers/master')
+
+    for w in workers:
+        workers_pid.append(zookeepersession.zk.get('/workers/master/' + w)[0].decode('utf-8'))
+    return workers_pid
+
+def get_master_name(_pid):
+    workers = zookeepersession.zk.get_children('/workers/master')
+    for w in workers:
+        if zookeepersession.zk.get('/workers/master/' + w)[0].decode('utf-8') == _pid:
+            return w
+    return None
+
+
 @app.route("/api/v1/crash/master", methods={'POST'})
 def master_kill():
-    l=client.container.list()[3:]
-    ids=[]
-    for i in l:
-        id=i.top()
-        ids.append(id)
-    master_id = min(ids)
-    l[ids.index(master_id)].kill()
-    return Response(json.dumps(master_id), status=200, mimetype='application/json')
+    ids=list_only_masters()
+    if len(ids) == 0:
+        return Response(json.dumps(list()), status=200, mimetype='application/json')
+    slave_to_kill = max(ids)
+    response = list()
+    response.append(slave_to_kill)
+    zookeepersession.zk.delete('/workers/master/' + get_master_name(slave_to_kill))
+    return Response(json.dumps(response), status=200, mimetype='application/json')
+
+
+def list_only_workers():
+    workers = zookeepersession.get_workers()
+    workers_pid = list()
+    for w in workers:
+        print ("w is %s", w)
+        workers_pid.append(zookeepersession.zk.get('/workers/node/' + w)[0].decode('utf-8'))
+    return workers_pid
+
+
+def get_worker_name(_pid):
+    workers = zookeepersession.get_workers()
+    workers_pid = list()
+    for w in workers:
+        if zookeepersession.zk.get('/workers/node/' + w)[0].decode('utf-8') == _pid:
+            return w
+    return None
+
 
 @app.route("/api/v1/crash/slave", methods={'POST'})
 def slave_kill():
-    l=client.container.list()
-    ids=[]
-    for i in l:
-        id=i.top()
-        ids.append(id)
-    slave_id = max(ids)
-    l[ids.index(master_id)].kill() 
-    return Response(json.dumps(list(str(slave_to_kill))), status=200, mimetype='application/json')
-    
+    ids=list_only_workers()
+    if len(ids) == 0:
+        return Response(json.dumps(list()), status=200, mimetype='application/json')
+    slave_to_kill = max(ids)
+    response = list()
+    response.append(slave_to_kill)
+    zookeepersession.zk.delete('/workers/node/' + get_worker_name(slave_to_kill))
+    return Response(json.dumps(response), status=200, mimetype='application/json')
+
 
 @app.route("/api/v1/worker/list", methods={'GET'})
 def list_cont():
-    workers = [i.top() for i in client.containers.list()[3:]]
-    list_workers = sorted(workers)
+    workers = zookeepersession.get_workers()
+    workers_pid = list()
+    for w in workers:
+        print ("w is %s", w)
+        workers_pid.append(zookeepersession.zk.get('/workers/node/' + w)[0].decode('utf-8'))
+
+    ## get master pid
+    workers = zookeepersession.zk.get_children('/workers/master')
+
+    for w in workers:
+        workers_pid.append(zookeepersession.zk.get('/workers/master/' + w)[0].decode('utf-8'))
+
+    list_workers = sorted(workers_pid)
     return Response(json.dumps(list_workers), status=200, mimetype='application/json')
 
+
+@app.route("/health", methods={'GET'})
+def health():
+    return Response(json.dumps({}), status=200, mimetype='application/json')
 
 
 if __name__ == "__main__":
