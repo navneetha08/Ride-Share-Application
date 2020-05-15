@@ -200,7 +200,7 @@ def master_kill():
     ids=list_only_masters()
     if len(ids) == 0:
         return Response(json.dumps(list()), status=200, mimetype='application/json')
-    slave_to_kill = max(ids)
+    slave_to_kill = str(max(ids))
     response = list()
     response.append(slave_to_kill)
     zookeepersession.zk.delete('/workers/master/' + get_master_name(slave_to_kill))
@@ -212,7 +212,7 @@ def list_only_workers():
     workers_pid = list()
     for w in workers:
         print ("w is %s", w)
-        workers_pid.append(zookeepersession.zk.get('/workers/node/' + w)[0].decode('utf-8'))
+        workers_pid.append(int(zookeepersession.zk.get('/workers/node/' + w)[0].decode('utf-8')))
     return workers_pid
 
 
@@ -230,7 +230,7 @@ def slave_kill():
     ids=list_only_workers()
     if len(ids) == 0:
         return Response(json.dumps(list()), status=200, mimetype='application/json')
-    slave_to_kill = max(ids)
+    slave_to_kill = str(max(ids))
     response = list()
     response.append(slave_to_kill)
     zookeepersession.zk.delete('/workers/node/' + get_worker_name(slave_to_kill))
@@ -243,13 +243,13 @@ def list_cont():
     workers_pid = list()
     for w in workers:
         print ("w is %s", w)
-        workers_pid.append(zookeepersession.zk.get('/workers/node/' + w)[0].decode('utf-8'))
+        workers_pid.append(int(zookeepersession.zk.get('/workers/node/' + w)[0].decode('utf-8')))
 
     ## get master pid
     workers = zookeepersession.zk.get_children('/workers/master')
 
     for w in workers:
-        workers_pid.append(zookeepersession.zk.get('/workers/master/' + w)[0].decode('utf-8'))
+        workers_pid.append(int(zookeepersession.zk.get('/workers/master/' + w)[0].decode('utf-8')))
 
     list_workers = sorted(workers_pid)
     return Response(json.dumps(list_workers), status=200, mimetype='application/json')

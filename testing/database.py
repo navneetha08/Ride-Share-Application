@@ -95,7 +95,7 @@ class Ride:
     def listUpcomingRides(source, destination):
         rides = list()
         c = conn.execute(
-            "SELECT rideId, created_by, source, destination, timestamp from ride where source = ? and destination = ? and timestamp >= ?", [source, destination, datetime.now()])
+            "SELECT rideId, created_by, source, destination, timestamp from ride where source = ? and destination = ? and timestamp >= DATETIME('now')", [source, destination])
 
         for row in c:
             r = Ride(rideId=row[0], created_by=row[1], source=row[

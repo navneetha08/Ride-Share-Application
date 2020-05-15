@@ -16,12 +16,14 @@ import time
 import random
 import kazoo
 import traceback
+from datetime import datetime
 
 logging.basicConfig()
 
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq'))
 channel = connection.channel()
-pid = str(random.randrange(10000))
+random.seed(datetime.now())
+pid = str(random.randrange(1000000))
 client = docker.from_env()
 last_known_children = list()
 
@@ -66,7 +68,6 @@ zookeepersession = ZooKeeperConnect()
 def create_slave_node():
     if (zookeepersession.is_master()):
         print ("creating new slave node")
-        node_path = zookeepersession.zk.create('/workers/node/c_',ephemeral=True, sequence=True,value=bytes(work_cont.top(), 'utf-8'), makepath=True)
         worker_cont=client.containers.run(image="slave:latest", command='sh -c "./wait-for-it.sh -t 10 127.0.0.1:5672 -- python master_v4.py"',links={"zoo":"zoo","rabbitmq":"rabbitmq"},\
 network="ccproj",restart_policy={"Name":"on-failure"},volumes = {'/var/run/docker.sock':{'bind':'/var/run/docker.sock'}}, name="slave" + str(time.time()))
         kazoo.recipe.watchers.DataWatch(zookeepersession.zk, node_path, delete_node_handler)
@@ -111,6 +112,9 @@ def db_delete_db(json):
         database.User.getByUsername(user.username).delete()
     rides=database.Ride.getRides()
     for ride in rides:
+        rUsers = database.RideUsers.getByRideId(ride.rideId)
+        for ru in rUsers:
+            ru.delete()
         database.Ride.getByRideId(ride.rideId).delete()
 
 def db_list_users(json):
@@ -119,6 +123,16 @@ def db_list_users(json):
     for user in users:
         user_list.append(user.username)
     return(user_list)
+
+
+def validateTimestamp(timestamp):
+    try:
+        return datetime.strptime(timestamp, "%d-%m-%Y:%S-%M-%H")
+    except Exception as ex:
+        print(ex)
+        raise BadRequest(
+                "invalid timestamp %s. Please user the format DD-MM-YYYY:SS-MM-HH" % (timestamp))
+        return timestamp
 
 def db_create_ride(json):
     if "created_by" not in json:
@@ -130,13 +144,13 @@ def db_create_ride(json):
     if "timestamp" not in json:
         raise BadRequest("timestamp not passed")
 
-    timestamp = user_requests.CreateRideRequests.validateTimestamp(json["timestamp"])
+    timestamp = validateTimestamp(json["timestamp"])
 
     ride = database.Ride(created_by=json["created_by"], source=json["source"], destination = json["destination"], timestamp = timestamp)
-    ride.store()
+    ride_id = ride.store()
 
-    database.RideUsers(ride_id=ride.ride_id, username=json["created_by"]).store()
-    return ride.ride_id
+    database.RideUsers(ride_id=ride_id, username=json["created_by"]).store()
+    return ride_id
 
 def db_delete_ride(json):
     if "ride_id" not in json:
@@ -163,11 +177,13 @@ def db_get_ride(json):
     ride = database.Ride.getByRideId(json["ride_id"])
     if ride is not None:
         users = list()
-        for ride_user in database.RideUsers.getByRideId(ride.ride_id):
+        for ride_user in database.RideUsers.getByRideId(ride.rideId):
             users.append(ride_user.username)
-    response = {"ride_id": ride.ride_id, "username": users,
-                "timestamp": ride.timestamp.strftime("%d-%m-%Y:%S-%M-%H"), "source": ride.source, "destination": ride.destination}
-    return response
+        response = {"ride_id": ride.rideId, "username": users,
+                "timestamp": ride.timestamp, "source": ride.source, "destination": ride.destination}
+        return response
+    else:
+        raise BadRequest("ride_id %d not found" % json["ride_id"])
 
 
 def db_num_rides(json):
@@ -187,10 +203,10 @@ def db_list_ride(json):
     if rides is not None and len(rides) > 0:
         for ride in rides:
             users = list()
-            for ride_user in database.RideUsers.getByRideId(ride.ride_id):
+            for ride_user in database.RideUsers.getByRideId(ride.rideId):
                 users.append(ride_user.username)
-            response.append({"ride_id": ride.ride_id, "username": users,
-                                "timestamp": ride.timestamp.strftime("%d-%m-%Y:%S-%M-%H")})
+            response.append({"ride_id": ride.rideId, "username": users,
+                                "timestamp": ride.timestamp})
     return response
 
 def db_add_user(json):
