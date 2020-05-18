@@ -20,11 +20,9 @@ from werkzeug.exceptions import MethodNotAllowed
 import traceback
 import requests as r
 
-port = 8080
+port = 80
 app = Flask(__name__)
-
-
-localhost_url = "http://127.0.0.1:%d" %(port)
+db_url = "http://52.86.125.105"
 
 global num_http_users
 num_http_users=0
@@ -44,7 +42,7 @@ def add_user():
     ## this step is to validate
     user_request = user_requests.CreateUserRequests(body)
     body['action'] = 'get_user'
-    response = r.post("%s/api/v1/db/read" % (localhost_url), json = body)
+    response = r.post("%s/api/v1/db/read" % (db_url), json = body)
 
     print (response.text)
 
@@ -53,11 +51,11 @@ def add_user():
 
     body['action'] = 'add_user'
 
-    response = r.post("%s/api/v1/db/write" % (localhost_url), json = body)
+    response = r.post("%s/api/v1/db/write" % (db_url), json = body)
 
     print (response.text)
 
-    if response.status_code != 201:
+    if response.status_code != 200:
         raise BadRequest("some error occurred")
 
     return Response(None, status=201, mimetype='application/json')
@@ -70,16 +68,16 @@ def delete_user(username):
     body = {}
     body['action'] = 'get_user'
     body['username'] = username
-    response = r.post("%s/api/v1/db/read" % (localhost_url), json = body)
+    response = r.post("%s/api/v1/db/read" % (db_url), json = body)
 
     if response.status_code != 200:
         raise BadRequest('user %s not found' % (username))
 
     body['action'] = 'delete_user'
 
-    response = r.post("%s/api/v1/db/write" % (localhost_url), json = body)
+    response = r.post("%s/api/v1/db/write" % (db_url), json = body)
 
-    if response.status_code != 201:
+    if response.status_code != 200:
         raise BadRequest("some error occurred")
 
     return Response(None, status=200, mimetype='application/json')
@@ -87,13 +85,14 @@ def delete_user(username):
 
 @app.route("/api/v1/users", methods={'GET'})
 def list_users():
+    print("in function")
     global num_http_users
     num_http_users+=1
     print("enter")
     body = {
         "action": "list_users"
     }
-    response = r.post("%s/api/v1/db/read" % (localhost_url), json = body)
+    response = r.post("%s/api/v1/db/read" % (db_url), json = body)
     print(response.text)
     if response.status_code != 200:
         raise BadRequest("some error occurred")
@@ -139,91 +138,12 @@ def db_list_users(json):
     for user in users:
         user_list.append(user.username)
     return(user_list)
-@app.route("/api/v1/db/write", methods={'POST'})
-def write_to_db():
-    body = request.get_json()
-    if "action" not in body:
-        raise BadRequest("action not passed")
-
-    action = body["action"]
-    try:
-        if action == "add_user":
-            db_add_user(body)
-            return Response(None, status=201, mimetype='application/json')
-
-        elif action == "delete_user":
-            db_delete_user(body)
-            return Response(None, status=201, mimetype='application/json')
-
-        elif action == "add_ride":
-            rideId = db_create_ride(body)
-            return Response(json.dumps({"rideId": rideId}), status=201, mimetype='application/json')
-        
-        elif action == "delete_ride":
-            db_delete_ride(body)
-            return Response(None, status=201, mimetype='application/json')
-        
-        elif action == "join_ride":
-            db_join_ride(body)
-            return Response(None, status=201, mimetype='application/json')
-
-        elif action == "delete_db":
-            db_delete_db(body)
-            return Response(None, status=201, mimetype='application/json')
-        else:
-            raise BadRequest("unrecognized action %s" % (action))
-    except BadRequest as ex:
-        raise
-    except Exception as ex:
-        print(ex)
-        raise BadRequest("invalid request")
-
-
-
-@app.route("/api/v1/db/read", methods={'POST'})
-def read_from_db():
-    body = request.get_json()
-    if "action" not in body:
-        raise BadRequest("action not passed")
-    
-    action = body["action"]
-    
-    if action == "list_upcoming_ride":
-        return Response(json.dumps(db_list_ride(body)), status=200, mimetype='application/json')
-    elif action == "get_ride":
-        return Response(json.dumps(db_get_ride(body)), status=200, mimetype='application/json')
-    elif action == "get_user":
-        return Response(json.dumps(db_get_user(body)), status=200, mimetype='application/json')
-    elif action =="list_users":
-        return Response(json.dumps(db_list_users(body)),status=200, mimetype='application/json')
-    else:
-        raise BadRequest("unrecognized action %s" % (action))
-    
-
 
 @app.route("/")
 def unsupported_path():
-    raise MethodNotAllowed()
+    return Response(json.dumps(dict()),status=200, mimetype='application/json')
 
-def db_delete_db(json):
-    users=database_users.User.getUsers()
-    for user in users:
-        database_users.User.getByUsername(user.username).delete()
-    rides=database_users.Ride.getRides()
-    for ride in rides:
-        database_users.Ride.getByRideId(ride.rideId).delete()
 if __name__ == "__main__":
-    project_dir = os.path.dirname(os.path.abspath(__file__))
-    database_file = "sqlite:///{}".format(
-        os.path.join(project_dir, "rideshare.db"))
-
-    # initialize database
-    engine = create_engine(database_file, echo=True)
-    database_users.Base.metadata.create_all(engine, checkfirst=True)
-    session_factory = sessionmaker(bind=engine)
-
-    session = flask_scoped_session(session_factory, app)
-
-#    app.run(port=port,debug=True)
-     http_user=WSGIServer(('',80),app)
-     http_user.serve_forever()
+    app.run(debug=True,port=port,host='0.0.0.0')
+    http_user=WSGIServer(('',80),app)
+    http_user.serve_forever()

@@ -17,11 +17,11 @@ from werkzeug.exceptions import MethodNotAllowed
 import traceback
 import requests as r
 
-port = 8080
+port = 80
 app = Flask(__name__)
 
 
-localhost_url = "http://127.0.0.1:%d" %(port)
+localhost_url = "http://54.91.104.100:%d" %(port)
 
 @app.before_request
 def before_request():
@@ -177,7 +177,7 @@ def read_from_db():
 
 @app.route("/")
 def unsupported_path():
-    raise MethodNotAllowed()
+    return Response(json.dumps({}), status=200, mimetype='application/json')
 
 def db_delete_db(json):
     users=database_users.User.getUsers()
