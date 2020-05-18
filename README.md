@@ -34,6 +34,18 @@ sudo docker run users
 We have implemeneted three microservices: rides, users and database.
 API calls are sent to the users and rides services via a Load Balancer. The rides and users now make calls to the database microservice. The orchestrator sends those requests to workers via queues. After receiving response from queue, it sends reponse to the service that made the API call. Master workers perform reads and slave workers perform writes. Fault-tolerance and availability have been taken care of. 
 #### To execute this application:
+In the rides instance
+```
+sudo docker build --tag rides .
+sudo docker run -p 80:80 rides
+```
+In the users instance
+```
+sudo docker build --tag users .
+sudo docker run -p 80:80 users
+```
+In the orchestrator instance:
 ```
 bash run.sh
 ```
+
