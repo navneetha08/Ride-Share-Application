@@ -2,7 +2,7 @@ import hashlib
 
 from werkzeug.exceptions import BadRequest
 
-from database_rides import Ride
+#from database_rides import Ride
 from datetime import datetime
 import re
 
@@ -42,9 +42,6 @@ class CreateRideRequests(Requests):
 
     def getTimestamp(self):
         return self._timestamp
-
-    def getEntityObject(self):
-        return Ride(created_by=self._created_by, source=self._source, destination=self._destination, timestamp=self._timestamp)
 
     @staticmethod
     def validateSource(source):

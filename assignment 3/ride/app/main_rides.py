@@ -4,7 +4,7 @@ from gevent.pywsgi import WSGIServer
 import os
 import json
 import ride_requests
-import database_rides
+#import database_rides
 from flask import Flask
 from flask import request, abort, jsonify, render_template
 from flask_sqlalchemy import SQLAlchemy
@@ -23,7 +23,7 @@ port = 80
 app = Flask(__name__)
 
 
-localhost_url = "http://127.0.0.1:%d" %(port)
+localhost_url = "http://52.86.125.105"
 
 global num_http_rides
 num_http_rides=0
@@ -41,7 +41,7 @@ def add_ride():
     num_http_rides+=1
     body = {}
     body['username'] = request.json['created_by']
-    url="http://127.0.0.1:8080"
+    url="http://52.86.125.105"
     response = r.get("%s/api/v1/users" % (url),json=body)
     print(response.text)
   
@@ -54,12 +54,22 @@ def add_ride():
 
     response = r.post("%s/api/v1/db/write" % (localhost_url), json = body)
 
-    if response.status_code != 201:
+    if response.status_code != 200:
         print (response.text)
         raise BadRequest("some error occurred")
 
     return Response(response.text, status=201, mimetype='application/json')
 
+
+def validateSource(source):
+        if int(source) < 1 or int(source) > 198:
+            raise BadRequest("invalid source passed")
+        return source
+
+def validateDestination(destination):
+    if int(destination) < 1 or int(destination) > 198:
+        raise BadRequest("invalid destination passed")
+    return destination
 
 @app.route("/api/v1/rides", methods={'GET'})
 def list_upcoming_ride():
@@ -68,11 +78,12 @@ def list_upcoming_ride():
     source = ""
     destination = ""
     try:
-        source = user_requests.CreateRideRequests.validateSource(
+        source = validateSource(
             request.args.get("source"))
-        destination = user_requests.CreateRideRequests.validateDestination(
+        destination = validateDestination(
             request.args.get("destination"))
     except Exception as ex:
+        traceback.print_exc()
         raise BadRequest("request arguments source, destination are mandatory")
 
     body = {
@@ -84,7 +95,9 @@ def list_upcoming_ride():
     response = r.post("%s/api/v1/db/read" % (localhost_url), json = body)
     if response.status_code != 200:
         raise BadRequest("some error occurred")
-    
+    j = json.loads(response.text)
+    if (len(j) == 0):
+        return Response(None, status=204, mimetype='application/json')
     return Response(response.text, status=200, mimetype='application/json')
 
 
@@ -94,13 +107,13 @@ def get_ride(rideId):
     num_http_rides+=1
     body = {
         "action": "get_ride",
-        "rideId": rideId
+        "ride_id": rideId
     }
 
     response = r.post("%s/api/v1/db/read" % (localhost_url), json = body)
 
     if response.status_code != 200:
-        raise BadRequest("some error occurred")
+        return Response(None, status=204, mimetype='application/json')
     return Response(response.text, status=200, mimetype='application/json')
 
 @app.route("/api/v1/rides/count", methods={'GET'})
@@ -126,7 +139,7 @@ def join_ride(rideId):
 
     body = {}
     body['username'] = request.json['username']
-    url="http://127.0.0.1:8080"
+    url="http://52.86.125.105"
     response = r.get("%s/api/v1/users" % (url),json=body)
     print(response.text)
   
@@ -136,10 +149,10 @@ def join_ride(rideId):
     
     body = request.json
     body["action"] = "join_ride"
-    body["rideId"] = rideId
+    body["ride_id"] = rideId
     response = r.post("%s/api/v1/db/write" % (localhost_url), json = body)
 
-    if response.status_code != 201:
+    if response.status_code != 200:
         raise BadRequest("some error occurred")
 
     return Response(None, status=200, mimetype='application/json')
@@ -151,10 +164,10 @@ def delete_ride(rideId):
     num_http_rides+=1
     body = {}
     body["action"] = "delete_ride"
-    body["rideId"] = rideId
+    body["ride_id"] = rideId
     response = r.post("%s/api/v1/db/write" % (localhost_url), json = body)
 
-    if response.status_code != 201:
+    if response.status_code != 200:
         raise BadRequest("some error occurred")
     
     return Response(None, status=200, mimetype='application/json')
@@ -176,178 +189,14 @@ def reset_http_ride():
     num_http_rides=0
     return Response(json.dumps(dict()), status=200, mimetype='application/json')
 
-@app.route("/api/v1/db/clear", methods={'POST'})
-def delete_db():
-    body = {}
-    body["action"] = "delete_db"
-    response = r.post("%s/api/v1/db/write" % (localhost_url), json = body)
-    if response.status_code != 201:
-        raise BadRequest("some error occurred")
-    
-    return Response(json.dumps(dict()), status=200, mimetype='application/json')
-
-def db_create_ride(json):
-    if "created_by" not in json:
-        raise BadRequest("created_by user not passed")
-    if "source" not in json:
-        raise BadRequest("source not passed")
-    if "destination" not in json:
-        raise BadRequest("destination not passed")
-    if "timestamp" not in json:
-        raise BadRequest("timestamp not passed")
-
-    timestamp = ride_requests.CreateRideRequests.validateTimestamp(json["timestamp"])
-    
-    ride = database_rides.Ride(created_by=json["created_by"], source=json["source"], destination = json["destination"], timestamp = timestamp)
-    ride.store()
-
-    database_rides.RideUsers(rideId=ride.rideId, username=json["created_by"]).store()
-    return ride.rideId
-
-def db_delete_ride(json):
-    if "rideId" not in json:
-        raise BadRequest("rideId not passed")
-    database_rides.Ride.getByRideId(json["rideId"]).delete()
-
-def db_join_ride(json):
-    if "rideId" not in json:
-        raise BadRequest("rideId not passed")
-    if "username" not in json:
-        raise BadRequest("username not passed")
-
-    ride = database_rides.Ride.getByRideId(json["rideId"])
-    if ride is not None:
-        database_rides.RideUsers(
-            username=json["username"], rideId=json["rideId"]).store()
-    else:
-        raise BadRequest("rideId %d not found" % json["rideId"])
-
-def db_get_ride(json):
-    if "rideId" not in json:
-        raise BadRequest("rideId not passed")
-
-    ride = database_rides.Ride.getByRideId(json["rideId"])
-    if ride is not None:
-        users = list()
-        for ride_user in database_rides.RideUsers.getByRideId(ride.rideId):
-            users.append(ride_user.username)
-    response = {"rideId": ride.rideId, "username": users,
-                "timestamp": ride.timestamp.strftime("%d-%m-%Y:%S-%M-%H"), "source": ride.source, "destination": ride.destination}
-    return response
-
-def db_list_ride(json):
-    if "source" not in json:
-        raise BadRequest("source not passed")
-    if "destination" not in json:
-        raise BadRequest("destination not passed")
-    
-    rides = database_rides.Ride.listUpcomingRides(json["source"], json["destination"])
-    response = list()
-    if rides is not None and len(rides) > 0:
-        for ride in rides:
-            users = list()
-            for ride_user in database_rides.RideUsers.getByRideId(ride.rideId):
-                users.append(ride_user.username)
-            response.append({"rideId": ride.rideId, "username": users,
-                                "timestamp": ride.timestamp.strftime("%d-%m-%Y:%S-%M-%H")})
-    return response
-
-def db_delete_db(json):
-    users=database_users.User.getUsers()
-    for user in users:
-        database_users.User.getByUsername(user.username).delete()
-    rides=database_rides.Ride.getRides()
-    for ride in rides:
-        database_rides.Ride.getByRideId(ride.rideId).delete()
-def db_num_rides(json):
-    users=database_rides.Ride.getRides()
-    l=[]
-    l.append(len(users))
-    return(l)
-
-
-@app.route("/api/v1/db/write", methods={'POST'})
-def write_to_db():
-    body = request.get_json()
-    if "action" not in body:
-        raise BadRequest("action not passed")
-
-    action = body["action"]
-    try:
-        if action == "add_user":
-            db_add_user(body)
-            return Response(None, status=201, mimetype='application/json')
-
-        elif action == "delete_user":
-            db_delete_user(body)
-            return Response(None, status=201, mimetype='application/json')
-
-        elif action == "add_ride":
-            print("here")
-            rideId = db_create_ride(body)
-            return Response(json.dumps({"rideId": rideId}), status=201, mimetype='application/json')
-        
-        elif action == "delete_ride":
-            db_delete_ride(body)
-            return Response(None, status=201, mimetype='application/json')
-        
-        elif action == "join_ride":
-            db_join_ride(body)
-            return Response(None, status=201, mimetype='application/json')
-
-        elif action == "delete_db":
-            db_delete_db(body)
-            return Response(None, status=201, mimetype='application/json')
-        else:
-            raise BadRequest("unrecognized action %s" % (action))
-    except BadRequest as ex:
-        raise
-    except Exception as ex:
-        print(ex)
-        raise BadRequest("invalid request")
-
-
-
-@app.route("/api/v1/db/read", methods={'POST'})
-def read_from_db():
-    body = request.get_json()
-    if "action" not in body:
-        raise BadRequest("action not passed")
-    
-    action = body["action"]
-    
-    if action == "list_upcoming_ride":
-        return Response(json.dumps(db_list_ride(body)), status=200, mimetype='application/json')
-    elif action == "get_ride":
-        return Response(json.dumps(db_get_ride(body)), status=200, mimetype='application/json')
-    elif action == "get_user":
-        return Response(json.dumps(db_get_user(body)), status=200, mimetype='application/json')
-    elif action =="list_users":
-        return Response(json.dumps(db_list_users(body)),status=200, mimetype='application/json')
-    elif action =='num_ride':
-        return Response(json.dumps(db_num_rides(body)),status=200, mimetype='application/json')
-    else:
-        raise BadRequest("unrecognized action %s" % (action))
-    
 
 
 @app.route("/")
 def unsupported_path():
-    raise MethodNotAllowed()
+    return Response(json.dumps(dict()), status=200, mimetype='application/json')
 
 
 if __name__ == "__main__":
-    project_dir = os.path.dirname(os.path.abspath(__file__))
-    database_file = "sqlite:///{}".format(
-        os.path.join(project_dir, "rideshare.db"))
-
-    # initialize database
-    engine = create_engine(database_file, echo=True)
-    database_rides.Base.metadata.create_all(engine, checkfirst=True)
-    session_factory = sessionmaker(bind=engine)
-
-    session = flask_scoped_session(session_factory, app)
-
-    app.run(port=port,debug=True)
+    app.run(host='0.0.0.0',port=port,debug=True)
 http_ride=WSGIServer(('0.0.0.0',80),app)
 http_ride.serve_forever()
