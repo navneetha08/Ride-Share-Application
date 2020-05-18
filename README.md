@@ -1,18 +1,18 @@
-# CCProject
+# CC-Project
 A cloud based RideShare application, meant to facilitate booking rides.
 For this project, we have used a Load Balancer and EC2 Linux instances from AWS Enterprises.
 This project has been implemented in phases
 ## Phase 1:
 A monolithic service consisting of users, rides and database APIs using flask. Our database is sqlite3 based.
 #### To execute this application:
-In CCProject/assignment1
+In CC-Project/assignment1
 ```
 sudo python main.py
 ```
 ## Phase 2:
 The monolithic service has been split into rides and users where each microservice has been containerized with its own database. Database accesses are also made across containers through a docker bridge network.
 #### To execute this application:
-In CCProject/assignment2
+In CC-Project/assignment2
 ```
 sudo docker-compose build
 sudo docker-compose up -d
@@ -20,12 +20,12 @@ sudo docker-compose up -d
 ## Phase 3:
 The microservices have been shifted to separate instances and now the API calls are sent to these services via a Load Balancer. The database calls are made through a docker overlay network.
 #### To execute this application:
-In CCProject/assignment3/ride/app on the rides instance
+In CC-Project/assignment3/ride/app on the rides instance
 ```
 sudo docker build --tag rides .
 sudo docker run rides
 ```
-In CCProject/assignment3/user/app on the users instance
+In CC-Project/assignment3/user/app on the users instance
 ```
 sudo docker build --tag users .
 sudo docker run users
