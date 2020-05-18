@@ -1,0 +1,7 @@
+Flask
+SQLAlchemy
+Flask-SQLAlchemy
+flask_sqlalchemy_session
+requests
+response
+gevent
