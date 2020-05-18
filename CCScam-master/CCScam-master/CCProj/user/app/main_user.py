@@ -112,7 +112,7 @@ def reset_http_user():
     global num_http_users
     num_http_users=0
     return Response(json.dumps(dict()), status=200, mimetype='application/json')
-
+'''
 def db_add_user(json):
     if "username" not in json:
         raise BadRequest("username not passed")
@@ -138,7 +138,7 @@ def db_list_users(json):
     for user in users:
         user_list.append(user.username)
     return(user_list)
-
+'''
 @app.route("/")
 def unsupported_path():
     return Response(json.dumps(dict()),status=200, mimetype='application/json')
