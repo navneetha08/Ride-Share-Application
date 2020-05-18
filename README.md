@@ -1,4 +1,4 @@
-# CCScam
+# CCProject
 A cloud based RideShare application, meant to facilitate booking rides.
 For this project, we have used a Load Balancer and EC2 Linux instances from AWS Enterprises.
 This project has been implemented in phases
