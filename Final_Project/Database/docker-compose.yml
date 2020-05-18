@@ -1,0 +1,60 @@
+version: '3.1'
+networks:
+  default:
+    external:
+      name: ccproj
+services:
+  zoo:
+    image: zookeeper
+    restart: on-failure
+    hostname: zoo
+    ports:
+      - 2181:2181
+      - 3888:3888
+      - 8080:8080
+    networks:
+      - default
+
+  rmq:
+    image: rabbitmq:3-management
+    networks:
+      - default
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    container_name: rabbitmq
+   
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh -c "./wait-for-it.sh -t 20 127.0.0.1:15672 -- python orchestrator.py"
+    ports: 
+    - "80:80"
+    volumes:
+    - .:/code
+    - /var/run/docker.sock:/var/run/docker.sock
+    - /usr/bin/docker:/usr/bin/docker 
+    depends_on:
+    - zoo
+    - rmq
+    restart: on-failure    
+    networks:
+      - default
+
+  master:
+    image: slave
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh -c "./wait-for-it.sh -t 20 127.0.0.1:15672 -- python master_v4.py"
+    volumes:
+    - .:/code
+    - /var/run/docker.sock:/var/run/docker.sock
+    - /usr/bin/docker:/usr/bin/docker
+    depends_on:
+    - rmq
+    restart: on-failure
+    networks:
+      - default
+  
